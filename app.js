@@ -977,7 +977,9 @@ if ($('cal')) {
 /* ====================== 우리들의 레시피 ====================== */
 // 메뉴 + 레시피 링크 + 별점(1~5, 0 = 아직 안 먹어봄). 버킷리스트처럼 같이 수정, 내용 암호화.
 // 저장: couples/{sha256(docId + ':recipes')} = 암호화된 [{ id, name, url, stars, by, at }]
-const rc = { store: null, items: [], editId: null };
+const RC_SORT_KEY = 'couple-recipe-sort';
+const rc = { store: null, items: [], editId: null, noteId: null, sort: 'new' };
+try { rc.sort = localStorage.getItem(RC_SORT_KEY) || 'new'; } catch {}
 
 // http/https 링크만 허용 (javascript: 같은 건 거절). 공유 문구에 섞인 링크도 뽑아냄.
 function cleanUrl(raw) {
@@ -1009,7 +1011,7 @@ async function initRecipes() {
   rc.store.subscribe((next) => {
     rc.items = Array.isArray(next) ? next : [];
     // 수정 중에 상대방이 바꾼 게 들어와도 입력하던 글자가 날아가지 않게, 수정 끝나고 다시 그림
-    if (rc.editId && $('rcList').contains(document.activeElement)) return;
+    if ((rc.editId || rc.noteId) && $('rcList').contains(document.activeElement)) return;
     renderRecipes();
   });
 }
@@ -1038,16 +1040,23 @@ function starButtons(it) {
 function renderRecipes() {
   const list = $('rcList');
   list.innerHTML = '';
-  const items = [...rc.items].sort((a, b) => (b.at || 0) - (a.at || 0));   // 최신 순
-  const tried = items.filter((x) => x.stars > 0);
+  const all = [...rc.items].sort((a, b) => (b.at || 0) - (a.at || 0));   // 기본: 최신 순
+  const tried = all.filter((x) => x.stars > 0);
   const avg = tried.length ? (tried.reduce((s, x) => s + x.stars, 0) / tried.length) : 0;
-  $('rcSub').textContent = items.length
-    ? `${items.length}개 중 ${tried.length}개 먹어 봤어` + (tried.length ? ` · 평균 ★${avg.toFixed(1)}` : '')
+  $('rcSub').textContent = all.length
+    ? `${all.length}개 중 ${tried.length}개 먹어 봤어` + (tried.length ? ` · 평균 ★${avg.toFixed(1)}` : '')
     : '먹고 싶은 메뉴랑 레시피 링크를 모아 두자';
+
+  // 정렬/필터: 최신순 | ★ 높은 순 (안 먹어 본 건 맨 아래) | 안 먹어 본 것만
+  document.querySelectorAll('#rcFilter button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.f === rc.sort)));
+  $('rcFilter').hidden = !all.length;
+  let items = all;
+  if (rc.sort === 'star') items = [...all].sort((a, b) => (b.stars || 0) - (a.stars || 0));   // 안정 정렬이라 같은 별이면 최신 순
+  if (rc.sort === 'todo') items = all.filter((x) => !x.stars);
 
   if (!items.length) {
     const li = document.createElement('li'); li.className = 'empty-row';
-    li.textContent = '먹고 싶은 걸 첫 번째로 적어 봐 🍳';
+    li.textContent = all.length ? '다 먹어 봤어! 🎉 새 메뉴를 적어 볼까?' : '먹고 싶은 걸 첫 번째로 적어 봐 🍳';
     list.appendChild(li);
     return;
   }
@@ -1101,10 +1110,11 @@ function renderRecipes() {
       if (!it.stars) { const none = document.createElement('span'); none.className = 'rc-none'; none.textContent = '아직 안 먹어 봄'; meta.appendChild(none); }
       if (safe) { const src = document.createElement('span'); src.className = 'rc-src'; src.textContent = srcLabel(safe); meta.appendChild(src); }
       main.append(name, meta);
+      main.appendChild(noteView(it));
 
       const ed = document.createElement('button'); ed.className = 'tool'; ed.type = 'button';
       ed.setAttribute('aria-label', '수정'); ed.textContent = '✎';
-      ed.onclick = () => { rc.editId = it.id; renderRecipes(); };
+      ed.onclick = () => { rc.editId = it.id; rc.noteId = null; renderRecipes(); };
       const del = document.createElement('button'); del.className = 'tool'; del.type = 'button';
       del.setAttribute('aria-label', '삭제'); del.textContent = '✕';
       del.onclick = () => { if (confirm(`"${it.name}" 레시피 지울까?`)) rcMutate((cur) => cur.filter((x) => x.id !== it.id)); };
@@ -1112,6 +1122,87 @@ function renderRecipes() {
     }
     li.append(who, main, tools);
     list.appendChild(li);
+  });
+}
+
+// 한 줄 후기: 🐻/🐰 각자 하나씩. 먹어 본(별 1개 이상) 메뉴에만, 내 후기만 수정 가능.
+// 저장 형태: notes: { bear: '...', bunny: '...' }  (예전 note/noteBy 한 개짜리도 읽어 줌)
+const NOTE_WHO = ['bear', 'bunny'];
+function notesOf(it) {
+  const n = { ...(it.notes || {}) };
+  if (it.note && !it.notes) n[NOTE_WHO.includes(it.noteBy) ? it.noteBy : 'legacy'] = it.note;
+  return n;
+}
+function withNote(x, who, text) {
+  const notes = notesOf(x);
+  if (text) notes[who] = text; else delete notes[who];
+  const { note, noteBy, ...rest } = x;   // 예전 형식 필드는 정리
+  return { ...rest, notes };
+}
+
+function noteView(it) {
+  const box = document.createElement('div');
+  box.className = 'rc-notes';
+  const notes = notesOf(it), me = getMe();
+  const order = ['legacy', ...NOTE_WHO];
+  order.forEach((who) => {
+    const text = notes[who] || '';
+    const editing = rc.noteId === `${it.id}:${who}`;
+    const mine = who === me || (who === 'legacy' && !!me);
+    if (editing) { box.appendChild(noteInput(it, who, text)); return; }
+    if (text) {
+      const icon = who === 'bear' ? '🐻' : who === 'bunny' ? '🐰' : '💬';
+      const el = document.createElement(mine ? 'button' : 'div');
+      el.className = 'rc-note ' + who + (mine ? ' mine' : '');
+      el.textContent = `${icon} “${text}”`;
+      if (mine) {
+        el.type = 'button';
+        el.setAttribute('aria-label', `내 한 줄 후기: ${text} (눌러서 수정)`);
+        el.onclick = () => openNote(it, who);
+      }
+      box.appendChild(el);
+    }
+  });
+  // 내 후기가 아직 없으면 "쓰기" 버튼 (안 먹어 본 메뉴엔 없음)
+  if (it.stars && !(me && notes[me]) && !rc.noteId?.startsWith(it.id + ':')) {
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'rc-note add';
+    add.textContent = me ? `${me === 'bear' ? '🐻' : '🐰'} 내 한 줄 후기 쓰기` : '💬 한 줄 후기 쓰기';
+    add.onclick = () => {
+      if (!getMe()) { $('rcMsg').textContent = '버킷리스트의 "나는 🐻/🐰"를 먼저 골라 줘'; return; }
+      openNote(it, getMe());
+    };
+    box.appendChild(add);
+  }
+  return box;
+}
+function openNote(it, who) { rc.noteId = `${it.id}:${who}`; rc.editId = null; $('rcMsg').textContent = ''; renderRecipes(); }
+
+function noteInput(it, who, text) {
+  const inp = document.createElement('input');
+  inp.className = 'rc-note-in'; inp.maxLength = 60; inp.value = text;
+  inp.placeholder = '어땠어? 한 줄로 남겨 줘';
+  inp.setAttribute('aria-label', `${it.name} 내 한 줄 후기`);
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    rc.noteId = null;
+    const v = inp.value.trim();
+    if (save && v !== text) rcMutate((cur) => cur.map((x) => x.id === it.id ? withNote(x, who, v) : x));
+    else renderRecipes();
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(true));
+  setTimeout(() => inp.focus(), 0);
+  return inp;
+}
+
+if ($('rcFilter')) {
+  $('rcFilter').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-f]');
+    if (!b) return;
+    rc.sort = b.dataset.f;
+    try { localStorage.setItem(RC_SORT_KEY, rc.sort); } catch {}
+    renderRecipes();
   });
 }
 

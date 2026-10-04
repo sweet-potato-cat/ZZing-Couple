@@ -502,6 +502,27 @@
   .rc-tools{display:flex}
   .rc-edit{display:grid;gap:6px}
   .rc-edit input{border:2px solid var(--ink);border-radius:8px;padding:4px 8px;font-family:var(--body);font-size:1rem;min-width:0}
+  .rc-filter{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
+  .rc-filter button{
+    border:2px solid var(--ink);border-radius:999px;background:var(--paper);cursor:pointer;
+    padding:1px 12px 3px;font-family:var(--hand);font-size:1.1rem;
+  }
+  .rc-filter button[aria-pressed="true"]{background:var(--bear);box-shadow:0 2px 0 var(--ink)}
+  .rc-note{
+    display:block;width:100%;text-align:left;margin-top:5px;cursor:pointer;
+    border:none;background:var(--mint);border-radius:10px;padding:3px 10px 5px;
+    font-family:var(--hand);font-size:1.12rem;line-height:1.3;color:var(--ink);word-break:keep-all;overflow-wrap:anywhere;
+  }
+  .rc-notes{display:grid;gap:5px;margin-top:5px;justify-items:start}
+  .rc-notes .rc-note{margin-top:0;width:auto;max-width:100%}
+  .rc-note.bunny{background:#FDE7EA}
+  .rc-note.bear{background:#FFF3E3}
+  div.rc-note{cursor:default}
+  .rc-note.add{background:none;border:1.5px dashed #aaa;color:#777;width:auto;font-size:1rem;padding:1px 10px 3px}
+  .rc-note-in{
+    width:100%;margin-top:5px;border:2px solid var(--ink);border-radius:10px;padding:4px 10px;
+    font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
+  }
 </style>
 </head>
 <body>
@@ -625,6 +646,11 @@
         <button class="btn green" type="submit">추가</button>
       </form>
       <p class="rc-msg" id="rcMsg" aria-live="polite"></p>
+      <div class="rc-filter" id="rcFilter" role="group" aria-label="정렬">
+        <button type="button" data-f="new" aria-pressed="true">최신순</button>
+        <button type="button" data-f="star" aria-pressed="false">★ 높은 순</button>
+        <button type="button" data-f="todo" aria-pressed="false">안 먹어 본 것</button>
+      </div>
       <ul class="recipes" id="rcList"></ul>
     </div>
     <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_ <button class="lockbtn" id="relock" type="button">잠그기</button><button class="lockbtn" id="forget" type="button">이 기기 잊기</button></footer>
@@ -692,6 +718,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=recipe1"></script>
+<script type="module" src="app.js?v=recipe3"></script>
 </body>
 </html>
