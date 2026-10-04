@@ -294,7 +294,16 @@
   .dday b{color:#E8696A;font-size:1.15em}
   .lockbtn{
     border:2px solid var(--ink);background:var(--paper);border-radius:999px;cursor:pointer;
-    font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;
+    font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;white-space:nowrap;
+  }
+  /* 폰: footer(약 455px)가 nowrap이라 화면보다 넓어서 좌우 스크롤이 생겼음 → 두 줄로 */
+  @media (max-width:600px){
+    footer{
+      white-space:normal;width:max-content;max-width:calc(100% - 32px);
+      border-radius:18px;padding:4px 14px 7px;line-height:1.45;
+    }
+    footer .lockbtn{margin:5px 3px 0}
+    .scene.last{padding-bottom:120px}
   }
 
   /* ===== 일정 (달력) ===== */
