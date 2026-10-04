@@ -77,6 +77,7 @@ function unlocked(key, docId) {
   $('lock').classList.add('gone');
   initGallery();
   initBucket();
+  initCalendar();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -295,8 +296,7 @@ async function encryptItems(items) { return b64.to(await encryptBytes(state.key,
 async function decryptItems(ct) { return JSON.parse(td.decode(await decryptBytes(state.key, b64.from(ct)))); }
 
 // Firebase 설정 전: 이 기기에만 저장 (테스트용)
-function localStore() {
-  const K = 'couple-bucket-local';
+function localStore(K) {
   let listener = () => {};
   const load = () => { try { return JSON.parse(localStorage.getItem(K) || '[]'); } catch { return []; } };
   return {
@@ -305,13 +305,21 @@ function localStore() {
   };
 }
 
-async function firestoreStore(onError) {
-  const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
-  const { initializeApp } = await import(`${base}/firebase-app.js`);
-  const fs = await import(`${base}/firebase-firestore.js`);
-  const app = initializeApp(FIREBASE_CONFIG);
-  const db = fs.getFirestore(app);
-  const ref = fs.doc(db, 'couples', state.docId);
+// Firebase 앱은 한 번만 만들고 버킷리스트·일정이 같이 써
+let dbPromise = null;
+function getDb() {
+  if (!dbPromise) dbPromise = (async () => {
+    const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
+    const { initializeApp } = await import(`${base}/firebase-app.js`);
+    const fs = await import(`${base}/firebase-firestore.js`);
+    return { fs, db: fs.getFirestore(initializeApp(FIREBASE_CONFIG)) };
+  })();
+  return dbPromise;
+}
+
+async function firestoreStore(docId, onError) {
+  const { fs, db } = await getDb();
+  const ref = fs.doc(db, 'couples', docId);
   return {
     subscribe(cb) {
       fs.onSnapshot(ref, async (snap) => {
@@ -342,22 +350,26 @@ function renderMe() {
 }
 document.querySelectorAll('.me button').forEach((b) => b.addEventListener('click', () => setMe(b.dataset.me)));
 
-async function initBucket() {
-  renderMe();
-  const status = $('status');
+// Firestore 문서 하나 = 암호화된 JSON 배열 하나. 실패하면 이 기기에만 저장.
+async function openStore(docId, localKey, status, name) {
   if (isConfigured()) {
     try {
-      store = await firestoreStore((e) => { console.error(e); status.textContent = '⚠️ 버킷리스트를 불러오지 못했어. 인터넷 연결이나 Firebase 설정을 확인해 줘.'; });
+      const st = await firestoreStore(docId, (e) => { console.error(e); status.textContent = `⚠️ ${name}을(를) 불러오지 못했어. 인터넷 연결이나 Firebase 설정을 확인해 줘.`; });
       status.textContent = '';
+      return st;
     } catch (e) {
       console.error(e);
       status.textContent = '⚠️ Firebase에 연결하지 못해서 이 기기에만 저장 중이야.';
-      store = localStore();
     }
   } else {
     status.textContent = '🛠️ Firebase 설정 전이라 지금은 이 기기에만 저장돼.';
-    store = localStore();
   }
+  return localStore(localKey);
+}
+
+async function initBucket() {
+  renderMe();
+  store = await openStore(state.docId, 'couple-bucket-local', $('status'), '버킷리스트');
   store.subscribe((next) => { items = next; renderBucket(); });
 }
 
@@ -431,5 +443,206 @@ $('addForm').addEventListener('submit', (e) => {
   input.value = '';
   mutate((cur) => [...cur, item]);
 });
+
+/* ====================== 일정 (달력, 같이 수정, 내용 암호화) ====================== */
+// 버킷리스트와 같은 방식이지만 Firestore 문서는 따로 (문서 ID = sha256(docId + ':calendar'))
+// → firestore.rules 를 바꿀 필요 없음
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+const pad2 = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const parseYmd = (str) => { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); };
+const todayYmd = () => ymd(new Date());
+const prettyDate = (str) => { const d = parseYmd(str); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WD[d.getDay()]})`; };
+
+const cal = { store: null, events: [], view: null, sel: todayYmd(), editId: null };
+
+// 기념일 자동 표시: 100일 단위 + N주년
+function annivOf(str) {
+  const start = parseYmd(START_DATE), d = parseYmd(str);
+  const day = Math.round((d - start) / 86400000) + 1;
+  if (day < 2) return null;
+  const years = d.getFullYear() - start.getFullYear();
+  if (years > 0 && d.getMonth() === start.getMonth() && d.getDate() === start.getDate()) return `${years}주년 🎉`;
+  if (day % 100 === 0) return `${day}일 🎉`;
+  return null;
+}
+
+async function initCalendar() {
+  if (!$('cal')) return;
+  const sel = parseYmd(cal.sel);
+  cal.view = new Date(sel.getFullYear(), sel.getMonth(), 1);
+  renderCalendar();
+  const calDoc = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(state.docId + ':calendar'))));
+  cal.store = await openStore(calDoc, 'couple-calendar-local', $('calStatus'), '일정');
+  cal.store.subscribe((next) => { cal.events = Array.isArray(next) ? next : []; renderCalendar(); });
+}
+
+async function calMutate(fn) {
+  try { await cal.store.mutate(fn); }
+  catch (e) { console.error(e); $('calStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; }
+}
+
+function eventsByDate() {
+  const map = {};
+  [...cal.events].sort((a, b) => (a.at || 0) - (b.at || 0)).forEach((e) => { (map[e.date] ||= []).push(e); });
+  return map;
+}
+
+function renderCalendar() {
+  const grid = $('cal');
+  const by = eventsByDate();
+  const y = cal.view.getFullYear(), m = cal.view.getMonth();
+  const today = todayYmd();
+  $('calTitle').textContent = `${y}년 ${m + 1}월`;
+
+  grid.innerHTML = '';
+  WD.forEach((w, i) => {
+    const h = document.createElement('div');
+    h.className = 'wd' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '');
+    h.textContent = w; h.setAttribute('role', 'columnheader');
+    grid.appendChild(h);
+  });
+
+  const lead = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  const cells = Math.ceil((lead + days) / 7) * 7;
+  for (let i = 0; i < cells; i++) {
+    const n = i - lead + 1;
+    if (n < 1 || n > days) {
+      const b = document.createElement('div'); b.className = 'day blank'; b.setAttribute('aria-hidden', 'true');
+      grid.appendChild(b); continue;
+    }
+    const ds = `${y}-${pad2(m + 1)}-${pad2(n)}`;
+    const dow = (lead + n - 1) % 7;
+    const evs = by[ds] || [];
+    const an = annivOf(ds);
+
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'day' + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '') +
+      (ds === today ? ' today' : '') + (ds === cal.sel ? ' sel' : '');
+    cell.setAttribute('aria-label', `${m + 1}월 ${n}일` + (an ? `, ${an}` : '') + (evs.length ? `, 일정 ${evs.length}개` : ''));
+    cell.setAttribute('aria-pressed', String(ds === cal.sel));
+
+    const num = document.createElement('span'); num.className = 'n'; num.textContent = n;
+    cell.appendChild(num);
+
+    const pills = [];
+    if (an) pills.push({ text: an, cls: 'anniv' });
+    evs.forEach((e) => pills.push({ text: e.title, cls: e.by || '' }));
+    pills.slice(0, 2).forEach((p) => {
+      const t = document.createElement('span'); t.className = 'pill ' + p.cls; t.textContent = p.text;
+      cell.appendChild(t);
+    });
+    if (pills.length > 2) {
+      const more = document.createElement('span'); more.className = 'more'; more.textContent = `+${pills.length - 2}`;
+      cell.appendChild(more);
+    }
+
+    cell.addEventListener('click', () => {
+      const again = cal.sel === ds;
+      cal.sel = ds; cal.editId = null;
+      renderCalendar();
+      // 같은 날 두 번 누르거나, 일정 없는 날을 누르면 바로 제목 입력
+      if (again || !evs.length) $('calInput').focus({ preventScroll: true });
+    });
+    grid.appendChild(cell);
+  }
+
+  renderCalDay(by);
+  renderCalSub();
+}
+
+function renderCalDay(by) {
+  $('calDayTitle').textContent = prettyDate(cal.sel) + (cal.sel === todayYmd() ? ' · 오늘' : '');
+  $('calInput').placeholder = `${prettyDate(cal.sel).replace(/ \(.\)$/, '')}에 뭐 해?`;
+  const list = $('calList');
+  list.innerHTML = '';
+
+  const an = annivOf(cal.sel);
+  if (an) {
+    const li = document.createElement('li');
+    const who = document.createElement('span'); who.className = 'who anniv'; who.textContent = '♥';
+    const t = document.createElement('span'); t.className = 'txt'; t.textContent = `우리 ${an}`;
+    li.append(who, t); list.appendChild(li);
+  }
+
+  const evs = by[cal.sel] || [];
+  if (!evs.length && !an) {
+    const li = document.createElement('li');
+    li.textContent = '아직 일정이 없어 ✏️';
+    li.style.fontFamily = 'var(--hand)'; li.style.fontSize = '1.2rem';
+    list.appendChild(li);
+  }
+  evs.forEach((ev) => {
+    const li = document.createElement('li');
+    const who = document.createElement('span');
+    who.className = 'who ' + (ev.by || '');
+    who.textContent = ev.by === 'bear' ? '🐻' : ev.by === 'bunny' ? '🐰' : '♥';
+    who.title = ev.by === 'bear' ? '곰돌찡이 추가' : ev.by === 'bunny' ? '토끼찡이 추가' : '';
+
+    let t;
+    if (cal.editId === ev.id) {
+      t = document.createElement('input'); t.className = 'edit-in'; t.value = ev.title; t.maxLength = 40;
+      t.setAttribute('aria-label', '일정 수정');
+      const finish = (save) => {
+        if (cal.editId !== ev.id) return;
+        cal.editId = null;
+        const v = t.value.trim();
+        if (save && v && v !== ev.title) calMutate((cur) => cur.map((x) => x.id === ev.id ? { ...x, title: v } : x));
+        else renderCalendar();
+      };
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+      t.addEventListener('blur', () => finish(true));
+      setTimeout(() => t.focus(), 0);
+    } else {
+      t = document.createElement('span'); t.className = 'txt'; t.textContent = ev.title;
+    }
+
+    const ed = document.createElement('button'); ed.className = 'tool'; ed.type = 'button';
+    ed.setAttribute('aria-label', '수정'); ed.textContent = '✎';
+    ed.onclick = () => { cal.editId = ev.id; renderCalendar(); };
+
+    const d = document.createElement('button'); d.className = 'tool'; d.type = 'button';
+    d.setAttribute('aria-label', '삭제'); d.textContent = '✕';
+    d.onclick = () => { if (confirm(`"${ev.title}" 일정 지울까?`)) calMutate((cur) => cur.filter((x) => x.id !== ev.id)); };
+
+    li.append(who, t, ed, d);
+    list.appendChild(li);
+  });
+}
+
+// 다가오는 일정 한 줄
+function renderCalSub() {
+  const today = todayYmd();
+  const next = cal.events.filter((e) => e.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.at || 0) - (b.at || 0))[0];
+  const sub = $('calSub');
+  if (!next) { sub.textContent = '날짜를 누르고 일정을 적어 봐'; return; }
+  const dd = Math.round((parseYmd(next.date) - parseYmd(today)) / 86400000);
+  sub.textContent = `다음 일정: ${prettyDate(next.date)} ${next.title} · ${dd === 0 ? '오늘!' : `D-${dd}`}`;
+}
+
+function moveMonth(delta) {
+  cal.view = new Date(cal.view.getFullYear(), cal.view.getMonth() + delta, 1);
+  renderCalendar();
+}
+if ($('cal')) {
+  $('calPrev').addEventListener('click', () => moveMonth(-1));
+  $('calNext').addEventListener('click', () => moveMonth(1));
+  $('calTitle').addEventListener('click', () => {
+    const t = new Date(); cal.sel = todayYmd(); cal.view = new Date(t.getFullYear(), t.getMonth(), 1);
+    renderCalendar();
+  });
+  $('calForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('calInput');
+    const v = input.value.trim();
+    if (!v || !cal.store) return;
+    const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: cal.sel, title: v, by: getMe() || '', at: Date.now() };
+    input.value = '';
+    calMutate((cur) => [...(Array.isArray(cur) ? cur : []), ev]);
+  });
+}
 
 boot();

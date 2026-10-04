@@ -296,6 +296,68 @@
     border:2px solid var(--ink);background:var(--paper);border-radius:999px;cursor:pointer;
     font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;
   }
+
+  /* ===== 일정 (달력) ===== */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
+  .cal-title{
+    border:none;background:none;cursor:pointer;padding:0 4px;
+    font-family:var(--hand);font-weight:700;font-size:1.65rem;
+  }
+  .cal-nav{
+    flex:none;width:42px;height:40px;padding:0;cursor:pointer;
+    border:var(--line);border-radius:12px;background:var(--paper);
+    font-family:var(--hand);font-weight:700;font-size:1.4rem;line-height:1;
+    box-shadow:0 3px 0 var(--ink);
+  }
+  .cal-nav:active{transform:translateY(3px);box-shadow:none}
+  .cal{
+    display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;
+    background:var(--ink);border:var(--line);border-radius:8px;overflow:hidden;
+  }
+  .cal .wd{
+    background:var(--mint);text-align:center;padding:3px 0 4px;
+    font-family:var(--hand);font-weight:700;font-size:1.05rem;
+  }
+  .cal .wd.sun,.day.sun .n{color:#E8696A}
+  .cal .wd.sat,.day.sat .n{color:#4A7FC9}
+  .day{
+    min-height:62px;background:var(--paper);border:none;border-radius:0;
+    padding:3px 3px 5px;margin:0;text-align:left;cursor:pointer;
+    display:flex;flex-direction:column;gap:2px;min-width:0;
+    -webkit-tap-highlight-color:transparent;transition:background .12s;
+  }
+  .day:focus-visible{outline-offset:-5px}
+  .day.blank{background:#F7F8F3;cursor:default}
+  .day.sel{background:var(--bear)}
+  .day .n{
+    width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;
+    font-family:var(--hand);font-weight:700;font-size:1.08rem;line-height:1;
+  }
+  .day.today .n{background:var(--heart);color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
+  .pill{
+    display:block;max-width:100%;padding:0 3px;border-radius:5px;
+    border:1.5px solid var(--ink);background:var(--mint);
+    font-size:.66rem;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .pill.bear{background:#FFF6EA}
+  .pill.bunny{background:#FDE7EA}
+  .pill.anniv{background:#FFD3D3;border-style:dashed}
+  .day .more{font-size:.66rem;color:#666;padding-left:2px}
+  /* 폰: 칸이 좁아서 테두리 빼고 글자 최대한 보이게 (… 대신 그냥 잘림) */
+  @media (max-width:599px){
+    .day{padding:3px 2px 5px}
+    .pill{border:none;border-radius:3px;padding:0 2px;font-size:.64rem;letter-spacing:-.03em;text-overflow:clip}
+    .pill.bear{background:var(--bear)}
+    .pill.anniv{background:#FFD3D3;border:none}
+  }
+  @media (min-width:600px){
+    .day{min-height:84px;padding:5px}
+    .pill,.day .more{font-size:.78rem}
+  }
+  .scene.cal-scene{padding-top:calc(76px + env(safe-area-inset-top,0px))}  /* 위 '만난 지' 뱃지에 안 가리게 */
+  .cal-day{margin-top:18px}
+  .cal-day h3{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:0 0 10px}
+  .who.anniv{background:#FFD3D3;border-style:dashed}
 </style>
 </head>
 <body>
@@ -360,6 +422,28 @@
     </div>
   </section>
 
+  <section class="scene cal-scene" aria-label="일정">
+    <div class="panel">
+      <h2>일정</h2>
+      <p class="sub" id="calSub">날짜를 누르고 일정을 적어 봐</p>
+      <p class="status" id="calStatus"></p>
+      <div class="cal-head">
+        <button class="cal-nav" id="calPrev" type="button" aria-label="이전 달">‹</button>
+        <button class="cal-title" id="calTitle" type="button" title="오늘로 가기"></button>
+        <button class="cal-nav" id="calNext" type="button" aria-label="다음 달">›</button>
+      </div>
+      <div class="cal" id="cal" role="grid" aria-label="달력"></div>
+      <div class="cal-day">
+        <h3 id="calDayTitle"></h3>
+        <form class="add" id="calForm">
+          <input id="calInput" type="text" maxlength="40" placeholder="무슨 일정이야?" aria-label="일정 제목">
+          <button class="btn green" type="submit">추가</button>
+        </form>
+        <ul class="bucket" id="calList"></ul>
+      </div>
+    </div>
+  </section>
+
   <section class="scene last" aria-label="버킷리스트">
     <div class="panel">
       <h2>버킷리스트</h2>
@@ -388,6 +472,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=calendar1"></script>
 </body>
 </html>
