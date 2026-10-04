@@ -282,6 +282,14 @@
 
   .first-note{font-family:var(--body)!important;font-weight:400!important;font-size:.95rem!important;color:#555;margin:-6px 0 16px!important}
   [hidden]{display:none!important}
+  .dday{
+    position:fixed;z-index:5;left:50%;transform:translateX(-50%);
+    top:calc(env(safe-area-inset-top,0px) + 12px);
+    background:var(--paper);border:var(--line);border-radius:999px;
+    padding:3px 18px 5px;font-family:var(--hand);font-weight:700;font-size:1.3rem;
+    white-space:nowrap;box-shadow:0 3px 0 var(--ink);
+  }
+  .dday b{color:#E8696A;font-size:1.15em}
   .lockbtn{
     border:2px solid var(--ink);background:var(--paper);border-radius:999px;cursor:pointer;
     font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;
@@ -319,6 +327,7 @@
 
 <!-- ============ 본문 ============ -->
 <div class="comic-bg" aria-hidden="true"></div>
+<div class="dday" id="dday" hidden></div>
 
 <main class="scroller" id="scroller">
   <section class="scene" aria-label="곰돌찡">

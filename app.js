@@ -1,4 +1,9 @@
-import { FIREBASE_CONFIG, SITE_PIN } from './config.js';
+import * as CFG from './config.js';
+
+// config.js 에 값이 없어도 동작하도록 기본값 사용
+const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
+const SITE_PIN = CFG.SITE_PIN || '1004';
+const START_DATE = CFG.START_DATE || '2025-09-17';   // 이 날이 1일
 
 const FIREBASE_VERSION = '10.12.2';
 const CHECK_TEXT = 'gomdol-tokki-ok';
@@ -181,6 +186,30 @@ async function boot() {
   try { pinOk = sessionStorage.getItem('couple-pin-ok') === '1'; } catch {}
   if (pinOk) afterPin();
 }
+
+/* ====================== 만난 지 며칠 ====================== */
+function renderDday() {
+  const [y, m, d] = START_DATE.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = Math.round((today - start) / 86400000) + 1;   // 시작일 = 1일
+  const years = today.getFullYear() - y;
+  const el = $('dday');
+  if (day < 1) { el.hidden = true; return; }
+  let extra = '';
+  if (today.getMonth() === m - 1 && today.getDate() === d && years > 0) extra = ` 오늘 ${years}주년이야 🎉`;
+  else if (day % 100 === 0) extra = ' 🎉';
+  el.innerHTML = '';
+  el.append('우리 만난 지 ');
+  const b = document.createElement('b'); b.textContent = day.toLocaleString('ko-KR');
+  el.append(b, '일!' + extra);
+  el.hidden = false;
+  // 자정이 지나면 자동으로 하루 올리기
+  const next = new Date(today); next.setDate(next.getDate() + 1);
+  setTimeout(renderDday, next - now + 1000);
+}
+renderDday();
 
 /* ====================== 하트 (섹션 3) ====================== */
 (() => {
