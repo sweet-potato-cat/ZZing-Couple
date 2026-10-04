@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>곰돌찡 ♥ 토끼찡</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐻</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<style>
+  /* ===== 토큰 ===== */
+  :root{
+    --ink:#1f1f1f;
+    --paper:#ffffff;
+    --mint:#F2FAEB;      /* 3컷만화 패널 색 */
+    --sky:#EAF3FC;       /* 잠금화면 배경 색 */
+    --bear:#FBEEDD;      /* 곰돌찡 몸 색 */
+    --bear-blush:#F7B48E;
+    --bunny-blush:#F8CDD3;
+    --heart:#FF8E8F;
+    --leaf:#7FB98A;      /* 토끼 연필 초록 */
+    --line:3px solid var(--ink);
+    --hand:"Gaegu","Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    --body:"Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    color-scheme: light;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{
+    height:100%;margin:0;
+    background:var(--mint);color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;color:inherit}
+  :focus-visible{outline:3px dashed var(--ink);outline-offset:3px}
+
+  /* ===== 잠금 화면 ===== */
+  #lock{
+    position:fixed;inset:0;z-index:50;
+    background:var(--sky);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+    transition:opacity .5s ease, visibility .5s;
+  }
+  #lock.gone{opacity:0;visibility:hidden}
+  .lock-art{
+    width:min(62vw,230px);aspect-ratio:460/410;
+    background:url("assets/lock.jpg") center/contain no-repeat;
+    margin-bottom:10px;
+  }
+  @media (max-height:640px){ .lock-art{width:150px} .key{aspect-ratio:1.7} }
+  .lock-panel{width:min(100%,300px);text-align:center}
+  .lock-panel p{
+    font-family:var(--hand);font-weight:700;font-size:1.35rem;margin:0 0 14px;
+  }
+  .dots{display:flex;justify-content:center;gap:16px;margin-bottom:22px}
+  .dot{
+    width:18px;height:18px;border-radius:50%;border:var(--line);background:var(--paper);
+    transition:background .15s, transform .15s;
+  }
+  .dot.on{background:var(--heart);transform:scale(1.12)}
+  .dots.shake{animation:shake .4s}
+  @keyframes shake{
+    20%{transform:translateX(-10px)}40%{transform:translateX(10px)}
+    60%{transform:translateX(-6px)}80%{transform:translateX(6px)}
+  }
+  .msg{min-height:1.4em;font-family:var(--hand);font-size:1.1rem;margin:-10px 0 10px}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .key{
+    aspect-ratio:1.35;border:var(--line);border-radius:22px;background:var(--paper);
+    font-family:var(--hand);font-weight:700;font-size:1.7rem;cursor:pointer;
+    box-shadow:0 4px 0 var(--ink);
+    transition:transform .08s, box-shadow .08s;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .key:active{transform:translateY(4px);box-shadow:0 0 0 var(--ink)}
+  .key.ghost{border-color:transparent;box-shadow:none;background:transparent;font-size:1.2rem}
+  .key.ghost:active{transform:none}
+
+  /* ===== 배경 (3컷만화) ===== */
+  .comic-bg{
+    position:fixed;inset:0;z-index:0;
+    background:#fff url("assets/comic.jpg") center/contain no-repeat;
+  }
+
+
+  /* ===== 스크롤 섹션 ===== */
+  .scroller{
+    position:relative;z-index:1;height:100%;
+    overflow-y:auto;scroll-snap-type:y mandatory;
+    -webkit-overflow-scrolling:touch;
+  }
+  .scene{
+    min-height:100%;scroll-snap-align:start;
+    display:flex;align-items:center;justify-content:center;
+    padding:48px 18px;position:relative;
+  }
+
+  /* 말풍선 = 이 페이지의 시그니처 */
+  .bubble{
+    position:relative;
+    background:var(--paper);border:var(--line);border-radius:999px;
+    padding:.35em 1.1em .45em;
+    font-family:var(--hand);font-weight:700;
+    font-size:clamp(2.6rem,9vw,5.2rem);line-height:1.1;
+    white-space:nowrap;
+  }
+  .bubble::after{
+    content:"";position:absolute;left:50%;bottom:-18px;
+    width:26px;height:26px;background:var(--paper);
+    border-right:var(--line);border-bottom:var(--line);
+    transform:translateX(-50%) rotate(45deg) skew(8deg,8deg);
+    border-bottom-right-radius:6px;
+  }
+  .bubble.bear{background:var(--bear)}
+  .bubble.bear::after{background:var(--bear)}
+  .bubble .blush{
+    display:inline-block;width:.38em;height:.24em;border-radius:50%;
+    vertical-align:middle;margin-left:.15em;
+  }
+  .bear .blush{background:var(--bear-blush)}
+  .bunny .blush{background:var(--bunny-blush)}
+
+  .duo{display:flex;align-items:center;gap:clamp(8px,2vw,22px);flex-wrap:wrap;justify-content:center}
+  .duo .bubble{font-size:clamp(1.9rem,6.5vw,4rem)}
+  .heart{
+    width:clamp(54px,9vw,88px);height:auto;flex:none;
+    transform:scale(0);transition:transform .55s cubic-bezier(.3,1.7,.5,1);
+  }
+  .scene.seen .heart{transform:scale(1)}
+  @media (max-width:600px){
+    .duo{flex-direction:column;gap:22px}
+    .duo .bubble{font-size:2.6rem}
+  }
+
+  .hint{
+    position:absolute;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
+    font-family:var(--hand);font-size:1.15rem;background:var(--paper);
+    border:2px solid var(--ink);border-radius:999px;padding:2px 14px;
+    animation:bob 1.8s ease-in-out infinite;
+  }
+  @keyframes bob{50%{transform:translate(-50%,6px)}}
+
+  /* ===== 공통 판넬 (만화 칸 느낌) ===== */
+  .panel{
+    width:min(100%,760px);
+    background:var(--paper);border:var(--line);border-radius:6px;
+    padding:clamp(18px,4vw,34px);
+  }
+  .panel h2{
+    font-family:var(--hand);font-weight:700;font-size:2.3rem;margin:0 0 4px;
+  }
+  .panel .sub{margin:0 0 20px;color:#555;font-size:.98rem}
+  .btn{
+    border:var(--line);border-radius:14px;background:var(--bear);
+    padding:8px 16px;font-family:var(--hand);font-weight:700;font-size:1.25rem;
+    cursor:pointer;box-shadow:0 3px 0 var(--ink);
+  }
+  .btn:active{transform:translateY(3px);box-shadow:none}
+  .btn.green{background:#DDF0D9}
+
+  /* 갤러리 */
+  .gal-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px;
+  }
+  .ph{
+    border:2px solid var(--ink);background:var(--paper);padding:8px 8px 6px;
+    cursor:zoom-in;transition:transform .15s;
+  }
+  .ph:nth-child(odd){transform:rotate(-1.5deg)}
+  .ph:nth-child(even){transform:rotate(1.2deg)}
+  .ph:hover{transform:rotate(0) scale(1.03)}
+  .ph img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:var(--mint)}
+  .ph span{display:block;font-family:var(--hand);font-size:1.05rem;text-align:center;margin-top:4px}
+  .empty{
+    border:2px dashed var(--ink);border-radius:8px;padding:28px 16px;text-align:center;
+    font-family:var(--hand);font-size:1.3rem;background:var(--mint);
+  }
+
+  /* 라이트박스 */
+  #lightbox{
+    position:fixed;inset:0;z-index:40;background:rgba(242,250,235,.96);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;
+  }
+  #lightbox.open{display:flex}
+  #lightbox img{max-width:100%;max-height:72vh;border:var(--line);background:#fff}
+  #lightbox .row{display:flex;gap:10px}
+
+  /* 버킷리스트 */
+  .progress{
+    height:16px;border:2px solid var(--ink);border-radius:999px;background:var(--paper);overflow:hidden;margin:6px 0 18px;
+  }
+  .progress i{display:block;height:100%;width:0;background:var(--heart);transition:width .4s}
+  .add{display:flex;gap:10px;margin-bottom:16px}
+  .add input{
+    flex:1;min-width:0;border:var(--line);border-radius:12px;padding:8px 12px;
+    font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
+  }
+  ul.bucket{list-style:none;margin:0;padding:0}
+  ul.bucket li{
+    display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:2px dotted #bbb;
+  }
+  .check{
+    flex:none;width:30px;height:30px;border:var(--line);border-radius:8px;background:var(--paper);
+    cursor:pointer;display:grid;place-items:center;font-size:1rem;padding:0;
+  }
+  li.done .check{background:var(--heart)}
+  li .txt{flex:1;font-size:1.05rem;word-break:keep-all}
+  li.done .txt{text-decoration:line-through;text-decoration-thickness:2px;color:#777}
+  .del{border:none;background:none;cursor:pointer;font-size:1.1rem;opacity:.5;padding:4px}
+  .del:hover{opacity:1}
+
+  footer{
+    text-align:center;font-family:var(--hand);font-size:1rem;
+    background:var(--paper);border:2px solid var(--ink);border-radius:999px;
+    padding:2px 14px;position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
+    white-space:nowrap;
+  }
+  .scene.last{padding-bottom:80px}
+
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition:none!important}
+    .heart{transform:scale(1)}
+  }
+
+  /* ===== v2: 문장 비밀번호 입력 ===== */
+  .lock-panel{width:min(100%,320px)}
+  .pw-wrap{position:relative}
+  .pw{
+    width:100%;border:var(--line);border-radius:18px;background:var(--paper);color:var(--ink);
+    padding:12px 52px 12px 16px;font-family:var(--body);font-size:1.05rem;
+    box-shadow:0 4px 0 var(--ink);
+  }
+  .pw.shake{animation:shake .4s}
+  .eye{
+    position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    border:none;background:none;cursor:pointer;font-size:1.2rem;padding:6px;
+  }
+  .remember{
+    display:flex;align-items:center;justify-content:center;gap:8px;margin:16px 0 14px;
+    font-family:var(--hand);font-size:1.15rem;cursor:pointer;
+  }
+  .remember input{width:20px;height:20px;accent-color:var(--heart)}
+  .enter{width:100%;font-size:1.45rem;padding:10px}
+  .enter[disabled]{opacity:.6;cursor:wait}
+
+  /* 갤러리: 복호화 전 자리 */
+  .ph img{opacity:0;transition:opacity .3s}
+  .ph img.ready{opacity:1}
+
+  /* 버킷리스트: 나는 누구? */
+  .me{display:flex;gap:8px;align-items:center;margin:0 0 14px;font-family:var(--hand);font-size:1.2rem;flex-wrap:wrap}
+  .me button{
+    border:2px solid var(--ink);border-radius:999px;background:var(--paper);
+    padding:2px 12px;font-family:var(--hand);font-size:1.15rem;cursor:pointer;
+  }
+  .me button[aria-pressed="true"].bear{background:var(--bear)}
+  .me button[aria-pressed="true"].bunny{background:#FDE7EA}
+  .who{
+    flex:none;font-size:.95rem;width:26px;height:26px;display:grid;place-items:center;
+    border-radius:50%;border:2px solid var(--ink);
+  }
+  .who.bear{background:var(--bear)}
+  .who.bunny{background:var(--paper)}
+  .edit-in{
+    flex:1;min-width:0;border:2px solid var(--ink);border-radius:8px;padding:4px 8px;
+    font-family:var(--body);font-size:1.05rem;
+  }
+  .status{font-size:.9rem;color:#666;margin:-10px 0 14px}
+  .tool{border:none;background:none;cursor:pointer;font-size:1.05rem;opacity:.5;padding:4px}
+  .tool:hover{opacity:1}
+
+  .first-note{font-family:var(--body)!important;font-weight:400!important;font-size:.95rem!important;color:#555;margin:-6px 0 16px!important}
+  [hidden]{display:none!important}
+  .lockbtn{
+    border:2px solid var(--ink);background:var(--paper);border-radius:999px;cursor:pointer;
+    font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 잠금 화면 ============ -->
+<div id="lock" role="dialog" aria-modal="true" aria-label="비밀번호 입력">
+  <div class="lock-art" role="img" aria-label="토끼찡이 곰돌찡에게 귀여워라고 말하는 그림"></div>
+  <!-- 1단계: 사이트 비밀번호 4자리 (매번) -->
+  <div class="lock-panel" id="pinStep">
+    <p>우리 비밀번호 4자리</p>
+    <div class="dots" id="dots" aria-live="polite">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+    <div class="msg" id="pinMsg"></div>
+    <div class="pad" id="pad"></div>
+  </div>
+
+  <!-- 2단계: 처음 온 기기에서만, 사진·버킷리스트 열쇠 -->
+  <form class="lock-panel" id="lockForm" autocomplete="off" hidden>
+    <p>처음 온 기기구나!</p>
+    <p class="first-note">사진이랑 버킷리스트를 열려면 우리 문장 비밀번호를 한 번만 입력해 줘</p>
+    <div class="pw-wrap">
+      <input class="pw" id="pw" type="password" aria-label="문장 비밀번호" placeholder="둘만 아는 문장" autocomplete="current-password">
+      <button class="eye" type="button" id="eye" aria-label="비밀번호 보기">👀</button>
+    </div>
+    <label class="remember"><input type="checkbox" id="remember" checked> 이 기기에서 기억하기</label>
+    <div class="msg" id="msg" aria-live="polite"></div>
+    <button class="btn enter" id="enter" type="submit">들어가기</button>
+  </form>
+</div>
+
+<!-- ============ 본문 ============ -->
+<div class="comic-bg" aria-hidden="true"></div>
+
+<main class="scroller" id="scroller">
+  <section class="scene" aria-label="곰돌찡">
+    <div class="bubble bear">곰돌찡<span class="blush"></span></div>
+    <div class="hint">내려 봐 ↓</div>
+  </section>
+
+  <section class="scene" aria-label="토끼찡">
+    <div class="bubble bunny">토끼찡<span class="blush"></span></div>
+  </section>
+
+  <section class="scene" id="together" aria-label="곰돌찡과 토끼찡">
+    <div class="duo">
+      <div class="bubble bear">곰돌찡</div>
+      <svg class="heart" viewBox="0 0 64 58" aria-label="하트" role="img">
+        <path d="M32 54 C10 38 3 28 3 18 C3 9 10 3 18 3 C24 3 29 7 32 12 C35 7 40 3 46 3 C54 3 61 9 61 18 C61 28 54 38 32 54Z"
+              fill="#FF8E8F" stroke="#1f1f1f" stroke-width="3.5" stroke-linejoin="round"/>
+      </svg>
+      <div class="bubble bunny">토끼찡</div>
+    </div>
+  </section>
+
+  <section class="scene" aria-label="갤러리">
+    <div class="panel">
+      <h2>갤러리</h2>
+      <p class="sub" id="galSub">우리가 같이 찍은 사진들</p>
+      <div id="grid" class="grid"></div>
+    </div>
+  </section>
+
+  <section class="scene last" aria-label="버킷리스트">
+    <div class="panel">
+      <h2>버킷리스트</h2>
+      <p class="sub" id="count">0개 중 0개 완료</p>
+      <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      <p class="status" id="status"></p>
+      <div class="me" role="group" aria-label="나는 누구?">
+        <span>나는</span>
+        <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
+        <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
+      </div>
+      <form class="add" id="addForm">
+        <input id="newItem" type="text" maxlength="80" placeholder="같이 하고 싶은 것" aria-label="버킷리스트 항목">
+        <button class="btn green" type="submit">추가</button>
+      </form>
+      <ul class="bucket" id="list"></ul>
+    </div>
+    <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_ <button class="lockbtn" id="relock" type="button">잠그기</button><button class="lockbtn" id="forget" type="button">이 기기 잊기</button></footer>
+  </section>
+</main>
+
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="사진 크게 보기">
+  <img id="lbImg" alt="">
+  <div class="row">
+    <button class="btn" id="lbClose" type="button">닫기</button>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

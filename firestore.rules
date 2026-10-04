@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 버킷리스트: 문서 ID = 비밀번호에서 만든 64자리 hex
+    // 목록 조회(list)를 막아서 비밀번호를 모르면 문서를 찾을 수 없고,
+    // 내용(ct)도 암호화돼 있어서 Firebase 콘솔에서도 읽을 수 없어.
+    match /couples/{docId} {
+      allow get: if docId.matches('^[a-f0-9]{64}$');
+      allow create, update: if docId.matches('^[a-f0-9]{64}$')
+        && request.resource.data.keys().hasOnly(['ct', 'updatedAt'])
+        && request.resource.data.ct is string
+        && request.resource.data.ct.size() < 500000
+        && request.resource.data.updatedAt == request.time;
+      allow list, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

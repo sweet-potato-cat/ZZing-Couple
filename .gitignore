@@ -1,0 +1,4 @@
+# 원본 사진은 절대 올라가면 안 돼!
+photos_raw/
+__pycache__/
+.DS_Store
