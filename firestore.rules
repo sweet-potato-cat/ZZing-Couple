@@ -15,6 +15,19 @@ service cloud.firestore {
       allow list, delete: if false;
     }
 
+    // 폰에서 올린 사진: 문서 ID = 랜덤 64자리 hex (목록은 위 couples 문서 안에 암호화돼 있음)
+    // 사진 내용(ct)은 AES-GCM 으로 암호화된 JPEG. 목록 조회·수정은 막고 만들기/읽기/지우기만.
+    match /photos/{docId} {
+      allow get: if docId.matches('^[a-f0-9]{64}$');
+      allow create: if docId.matches('^[a-f0-9]{64}$')
+        && request.resource.data.keys().hasOnly(['ct', 'createdAt'])
+        && request.resource.data.ct is string
+        && request.resource.data.ct.size() < 1000000
+        && request.resource.data.createdAt == request.time;
+      allow delete: if docId.matches('^[a-f0-9]{64}$');
+      allow list, update: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -220,74 +220,401 @@ renderDday();
     { root: $('scroller'), threshold: 0.6 }).observe(t);
 })();
 
-/* ====================== 갤러리 (암호화된 사진 읽기 전용) ====================== */
+/* ====================== 갤러리 ====================== */
+// 두 종류의 사진이 날짜순으로 섞여 보여:
+//  - static: encrypt_photos.py 로 올린 사진 (gallery/*.enc → GitHub)
+//  - cloud : 폰에서 바로 찍거나 골라서 올린 사진 (Firestore photos/{랜덤 64hex}, 암호화)
+//    사진 목록은 couples/{sha256(docId + ':photos')} 에 암호화된 배열로 저장
 async function fetchDecrypt(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(path + ' ' + r.status);
   return decryptBytes(state.key, new Uint8Array(await r.arrayBuffer()));
 }
 const toURL = (bytes) => URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+const sha256hex = async (str) => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(str))));
+const thumbIdOf = (id) => sha256hex(id + ':thumb');
+const normDate = (d) => String(d || '').replace(/-/g, '.');   // 표시·정렬용 YYYY.MM.DD
+
+const gal = { static: [], cloud: [], store: null, remote: false, urls: new Map(), io: null };
+
+async function photoDocGet(id) {
+  const { fs, db } = await getDb();
+  const snap = await fs.getDoc(fs.doc(db, 'photos', id));
+  if (!snap.exists()) throw new Error('missing photo ' + id.slice(0, 8));
+  return decryptBytes(state.key, b64.from(snap.data().ct));
+}
+async function photoDocPut(id, bytes) {
+  const { fs, db } = await getDb();
+  const ct = b64.to(await encryptBytes(state.key, bytes));
+  await fs.setDoc(fs.doc(db, 'photos', id), { ct, createdAt: fs.serverTimestamp() });
+}
+async function photoDocDel(id) {
+  const { fs, db } = await getDb();
+  await fs.deleteDoc(fs.doc(db, 'photos', id));
+}
+
+function setUploadEnabled(on) { $('upBtns').setAttribute('aria-disabled', String(!on)); }
 
 async function initGallery() {
-  const grid = $('grid');
-  let photos = [];
   try {
     const r = await fetch('gallery/manifest.enc', { cache: 'no-cache' });
-    if (r.ok) photos = JSON.parse(td.decode(await decryptBytes(state.key, new Uint8Array(await r.arrayBuffer()))));
+    if (r.ok) {
+      const list = JSON.parse(td.decode(await decryptBytes(state.key, new Uint8Array(await r.arrayBuffer()))));
+      gal.static = list.map((p) => ({ kind: 'static', key: 's:' + p.id, id: p.id, date: normDate(p.date), caption: p.caption || '' }));
+    }
   } catch (e) { console.error(e); }
+  renderGallery();
 
-  grid.innerHTML = '';
-  if (!photos.length) {
-    const e = document.createElement('div');
-    e.className = 'empty'; e.style.gridColumn = '1 / -1';
-    e.textContent = '곧 사진이 채워질 거야 📷';
-    grid.appendChild(e);
+  const status = $('galStatus');
+  if (!isConfigured()) {
+    status.textContent = '🛠️ Firebase 설정 전이라 폰에서 올리기는 아직 못 써.';
+    setUploadEnabled(false);
     return;
   }
-  $('galSub').textContent = `우리가 같이 찍은 사진 ${photos.length}장`;
+  try {
+    gal.store = await firestoreStore(await sha256hex(state.docId + ':photos'), (e) => {
+      console.error(e); status.textContent = '⚠️ 올린 사진 목록을 불러오지 못했어. 인터넷 연결을 확인해 줘.';
+    });
+    gal.remote = true;
+    gal.store.subscribe((next) => {
+      gal.cloud = (Array.isArray(next) ? next : []).map((it) => ({
+        kind: 'cloud', key: 'c:' + it.id, id: it.id, date: normDate(it.date), caption: it.cap || '', by: it.by || '', at: it.at || 0
+      }));
+      renderGallery();
+    });
+  } catch (e) {
+    console.error(e);
+    status.textContent = '⚠️ Firebase에 연결하지 못해서 지금은 사진을 올릴 수 없어.';
+    setUploadEnabled(false);
+  }
+}
 
-  const io = 'IntersectionObserver' in window
+function renderGallery() {
+  const grid = $('grid');
+  const all = [...gal.cloud, ...gal.static]
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.at || 0) - (a.at || 0));
+  if (gal.io) gal.io.disconnect();
+  grid.innerHTML = '';
+  if (!all.length) {
+    const e = document.createElement('div');
+    e.className = 'empty'; e.style.gridColumn = '1 / -1';
+    e.textContent = '첫 사진을 올려 봐 📷';
+    grid.appendChild(e);
+    $('galSub').textContent = '우리가 같이 찍은 사진들';
+    return;
+  }
+  $('galSub').textContent = `우리가 같이 찍은 사진 ${all.length}장`;
+
+  gal.io = 'IntersectionObserver' in window
     ? new IntersectionObserver((es) => es.forEach((en) => {
-        if (en.isIntersecting) { io.unobserve(en.target); loadThumb(en.target); }
+        if (en.isIntersecting) { gal.io.unobserve(en.target); loadThumb(en.target); }
       }), { root: $('scroller'), rootMargin: '300px' })
     : null;
 
-  photos.forEach((p) => {
+  all.forEach((p) => {
     const f = document.createElement('figure');
-    f.className = 'ph'; f.style.margin = 0; f.tabIndex = 0; f.dataset.id = p.id;
+    f.className = 'ph'; f.style.margin = 0; f.tabIndex = 0; f._item = p;
     const im = document.createElement('img'); im.alt = (p.caption || p.date) + ' 사진';
-    const cap = document.createElement('span'); cap.textContent = p.caption ? `${p.caption} · ${p.date}` : p.date;
+    const cap = document.createElement('span');
+    if (p.by) { const b = document.createElement('i'); b.className = 'by'; b.textContent = p.by === 'bear' ? '🐻' : '🐰'; cap.appendChild(b); }
+    cap.append(p.caption ? `${p.caption} · ${p.date}` : p.date);
     f.append(im, cap);
     const open = () => openPhoto(p, im.alt);
     f.addEventListener('click', open);
     f.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
     grid.appendChild(f);
-    io ? io.observe(f) : loadThumb(f);
+    const cached = gal.urls.get(p.key);
+    if (cached) { im.onload = () => im.classList.add('ready'); im.src = cached; }
+    else if (gal.io) gal.io.observe(f);
+    else loadThumb(f);
   });
 }
 
 async function loadThumb(fig) {
-  const im = fig.querySelector('img');
+  const p = fig._item, im = fig.querySelector('img');
   try {
-    im.src = toURL(await fetchDecrypt(`gallery/${fig.dataset.id}_t.enc`));
+    let url = gal.urls.get(p.key);
+    if (!url) {
+      const bytes = p.kind === 'static'
+        ? await fetchDecrypt(`gallery/${p.id}_t.enc`)
+        : await photoDocGet(await thumbIdOf(p.id));
+      url = toURL(bytes);
+      gal.urls.set(p.key, url);
+    }
     im.onload = () => im.classList.add('ready');
+    im.src = url;
   } catch (e) { console.error(e); }
 }
 
 const lb = $('lightbox'), lbImg = $('lbImg');
+let lbItem = null;
 async function openPhoto(p, alt) {
+  lbItem = p;
   lbImg.removeAttribute('src'); lbImg.alt = alt;
+  $('lbCap').textContent = [p.caption, p.date].filter(Boolean).join(' · ');
+  $('lbDel').hidden = p.kind !== 'cloud';
   lb.classList.add('open');
+  $('lbClose').focus();
   try {
-    const url = toURL(await fetchDecrypt(`gallery/${p.id}.enc`));
+    const bytes = p.kind === 'static' ? await fetchDecrypt(`gallery/${p.id}.enc`) : await photoDocGet(p.id);
+    if (lbItem !== p) return;
+    const url = toURL(bytes);
     if (lbImg.dataset.url) URL.revokeObjectURL(lbImg.dataset.url);
     lbImg.dataset.url = url; lbImg.src = url;
-  } catch (e) { console.error(e); }
-  $('lbClose').focus();
+  } catch (e) { console.error(e); $('lbCap').textContent = '⚠️ 사진을 불러오지 못했어'; }
 }
-$('lbClose').onclick = () => lb.classList.remove('open');
-lb.addEventListener('click', (e) => { if (e.target === lb) lb.classList.remove('open'); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') lb.classList.remove('open'); });
+const closeLb = () => { lb.classList.remove('open'); lbItem = null; };
+$('lbClose').onclick = closeLb;
+lb.addEventListener('click', (e) => { if (e.target === lb) closeLb(); });
+$('lbDel').onclick = async () => {
+  const p = lbItem;
+  if (!p || p.kind !== 'cloud' || !gal.store) return;
+  if (!confirm('이 사진 지울까? 둘 다한테서 없어지고 되돌릴 수 없어.')) return;
+  closeLb();
+  try {
+    await gal.store.mutate((cur) => cur.filter((x) => x.id !== p.id));   // 목록에서 먼저 빼고
+    await Promise.allSettled([photoDocDel(p.id), thumbIdOf(p.id).then(photoDocDel)]);   // 사진 본체 삭제
+    const u = gal.urls.get(p.key); if (u) { URL.revokeObjectURL(u); gal.urls.delete(p.key); }
+  } catch (e) { console.error(e); $('galStatus').textContent = '⚠️ 지우지 못했어. 잠시 후 다시 해 줘.'; }
+};
+
+/* ====================== 사진 올리기 (필름 카메라 느낌) ====================== */
+const FULL_LONG = 1280;      // 긴 변 px (필름 느낌이라 일부러 작게)
+const THUMB_LONG = 420;
+const MAX_BYTES = 700000;    // 암호화+base64 후 Firestore 문서 1MiB 안에 들어가는 크기
+const MAX_FILES = 10;
+const up = { items: [], busy: false };
+
+// 사진 찍은 날짜: JPEG EXIF DateTimeOriginal → 없으면 파일 날짜 → 없으면 오늘
+async function exifDate(file) {
+  try {
+    const v = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (v.getUint16(0) !== 0xFFD8) return null;
+    let off = 2;
+    while (off + 10 < v.byteLength) {
+      const marker = v.getUint16(off), len = v.getUint16(off + 2);
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {   // "Exif"
+        const t = off + 10, le = v.getUint16(t) === 0x4949;
+        const u16 = (o) => v.getUint16(t + o, le), u32 = (o) => v.getUint32(t + o, le);
+        const ifd = (o) => {
+          const tags = {}, n = u16(o);
+          for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; tags[u16(e)] = { count: u32(e + 4), at: e + 8 }; }
+          return tags;
+        };
+        const str = (tag) => {
+          const o = tag.count > 4 ? u32(tag.at) : tag.at;
+          let s = ''; for (let i = 0; i < Math.min(tag.count, 32) - 1; i++) s += String.fromCharCode(v.getUint8(t + o + i));
+          return s;
+        };
+        const ifd0 = ifd(u32(4));
+        let raw = null;
+        if (ifd0[0x8769]) { const ex = ifd(u32(ifd0[0x8769].at)); if (ex[0x9003]) raw = str(ex[0x9003]); }
+        if (!raw && ifd0[0x0132]) raw = str(ifd0[0x0132]);
+        const m = raw && raw.match(/^(\d{4}):(\d{2}):(\d{2})/);
+        return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+      }
+      off += 2 + len;
+    }
+  } catch {}
+  return null;
+}
+
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => res({ img, url });
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했어')); };
+    img.src = url;
+  });
+}
+// 브라우저가 EXIF 회전을 적용해서 그려 줌. 다시 그리면서 EXIF(GPS 위치 등)는 사라짐.
+function resizeTo(source, w0, h0, long) {
+  let k = Math.min(1, long / Math.max(w0, h0));
+  let cur = source, cw = w0, ch = h0;
+  // 한 번에 크게 줄이면 계단 현상 → 절반씩 줄이기
+  while (cw * k < cw / 2) {
+    const c = document.createElement('canvas'); c.width = Math.round(cw / 2); c.height = Math.round(ch / 2);
+    c.getContext('2d').drawImage(cur, 0, 0, c.width, c.height);
+    cur = c; cw = c.width; ch = c.height; k = Math.min(1, long / Math.max(cw, ch));
+  }
+  const out = document.createElement('canvas'); out.width = Math.round(cw * k); out.height = Math.round(ch * k);
+  const x = out.getContext('2d'); x.imageSmoothingQuality = 'high';
+  x.drawImage(cur, 0, 0, out.width, out.height);
+  return out;
+}
+async function toSourceCanvas(file) {
+  const { img, url } = await loadImage(file);
+  try { return resizeTo(img, img.naturalWidth, img.naturalHeight, FULL_LONG); }
+  finally { URL.revokeObjectURL(url); }
+}
+
+function prng(seed) {   // mulberry32: 사진마다 그레인/빛샘이 미리보기와 똑같이 나오게
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function drawStamp(ctx, W, H, date) {
+  const [y, m, d] = date.split('-');
+  const txt = `'${y.slice(2)} ${m} ${d}`;
+  const fs = Math.max(14, Math.round(Math.min(W, H) * 0.055));
+  ctx.save();
+  ctx.font = `bold ${fs}px "Courier New", ui-monospace, monospace`;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+  const x = W - fs * 0.9, yy = H - fs * 0.8;
+  ctx.shadowColor = 'rgba(255,70,0,.9)'; ctx.shadowBlur = fs * 0.4;
+  ctx.fillStyle = '#FF9A3C'; ctx.fillText(txt, x, yy);
+  ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,214,160,.6)'; ctx.fillText(txt, x, yy);
+  ctx.restore();
+}
+
+function renderPhoto(item, opts) {
+  const { src } = item, W = src.width, H = src.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+  if (opts.film) {
+    const rnd = prng(item.seed);
+    const im = ctx.getImageData(0, 0, W, H), px = im.data;
+    for (let i = 0; i < px.length; i += 4) {
+      let r = px[i], g = px[i + 1], b = px[i + 2];
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = l + (r - l) * 0.8; g = l + (g - l) * 0.8; b = l + (b - l) * 0.8;          // 채도 살짝 낮게
+      r = (r - 128) * 0.86 + 142; g = (g - 128) * 0.86 + 134; b = (b - 128) * 0.86 + 122; // 대비↓ + 따뜻하게
+      r = r * 0.93 + 14; g = g * 0.93 + 14; b = b * 0.93 + 18;                        // 검정 살짝 들뜨게 (바랜 느낌)
+      const n = (rnd() + rnd() - 1) * 16;                                               // 필름 그레인
+      px[i] = r + n; px[i + 1] = g + n; px[i + 2] = b + n;                              // (자동으로 0~255로 잘림)
+    }
+    ctx.putImageData(im, 0, 0);
+    // 비네팅
+    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) / 2);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(35,18,0,.42)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    // 빛샘 (사진마다 위치가 달라)
+    const lx = rnd() < 0.5 ? 0 : W, ly = rnd() * H * 0.6, R = Math.max(W, H) * 0.55;
+    const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, R);
+    lg.addColorStop(0, 'rgba(255,140,60,.30)'); lg.addColorStop(1, 'rgba(255,140,60,0)');
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  if (opts.stamp) drawStamp(ctx, W, H, item.date);
+  return c;
+}
+
+const canvasToBytes = (c, q) => new Promise((res, rej) =>
+  c.toBlob((b) => (b ? b.arrayBuffer().then((a) => res(new Uint8Array(a)), rej) : rej(new Error('toBlob 실패'))), 'image/jpeg', q));
+const shrink = (c, long) => (Math.max(c.width, c.height) <= long ? c : resizeTo(c, c.width, c.height, long));
+async function encodeFull(c) {
+  for (const [long, q] of [[FULL_LONG, 0.82], [FULL_LONG, 0.7], [1080, 0.68], [900, 0.6]]) {
+    const bytes = await canvasToBytes(shrink(c, long), q);
+    if (bytes.length <= MAX_BYTES) return bytes;
+  }
+  throw new Error('사진이 너무 커');
+}
+
+const curOpts = () => ({ film: $('optFilm').checked, stamp: $('optStamp').checked });
+
+function renderPreviews() {
+  const box = $('upPreviews');
+  box.innerHTML = '';
+  box.className = 'up-previews ' + (up.items.length > 1 ? 'many' : 'one');
+  const opts = curOpts();
+  up.items.forEach((it) => box.appendChild(renderPhoto(it, opts)));
+  $('upDateRow').hidden = up.items.length !== 1;
+  if (up.items.length === 1) $('upDate').value = up.items[0].date;
+}
+
+async function openSheet(files, fromCamera, tooMany) {
+  const sheet = $('upSheet'), msg = $('upMsg'), go = $('upGo');
+  up.items = [];
+  $('upPreviews').innerHTML = '';
+  $('upCap').value = '';
+  renderMe();
+  sheet.hidden = false;
+  go.disabled = true;
+  msg.textContent = '사진 준비 중…';
+  const today = todayYmd();
+  for (const f of files) {
+    try {
+      const date = (fromCamera ? today : null) || await exifDate(f) || (f.lastModified ? ymd(new Date(f.lastModified)) : today);
+      up.items.push({ src: await toSourceCanvas(f), date, seed: (Math.random() * 2 ** 31) | 0 });
+    } catch (e) { console.error(e); }
+    if (sheet.hidden) return;   // 준비 중에 취소함
+  }
+  if (!up.items.length) { msg.textContent = '⚠️ 사진을 읽지 못했어. 다른 사진으로 해 줘.'; return; }
+  renderPreviews();
+  msg.textContent = tooMany ? `한 번에 ${MAX_FILES}장까지라 앞의 ${MAX_FILES}장만 골랐어.` : '';
+  go.disabled = false;
+}
+
+function closeSheet() {
+  if (up.busy) return;
+  $('upSheet').hidden = true;
+  $('upPreviews').innerHTML = '';
+  up.items = [];
+}
+
+async function doUpload() {
+  if (up.busy || !up.items.length || !gal.store) return;
+  up.busy = true;
+  const go = $('upGo'), msg = $('upMsg');
+  go.disabled = true;
+  const cap = $('upCap').value.trim().slice(0, 30), by = getMe() || '', opts = curOpts();
+  const total = up.items.length;
+  try {
+    while (up.items.length) {
+      const it = up.items[0];
+      msg.textContent = total > 1 ? `올리는 중… ${total - up.items.length + 1}/${total}` : '올리는 중…';
+      const out = renderPhoto(it, opts);
+      const full = await encodeFull(out);
+      const thumb = await canvasToBytes(shrink(out, THUMB_LONG), 0.72);
+      const id = hex(crypto.getRandomValues(new Uint8Array(32)));
+      await photoDocPut(id, full);
+      await photoDocPut(await thumbIdOf(id), thumb);
+      gal.urls.set('c:' + id, toURL(thumb));   // 방금 올린 건 다시 안 받아도 바로 보이게
+      const entry = { id, date: it.date, cap, by, at: Date.now() };
+      await gal.store.mutate((cur) => [...(Array.isArray(cur) ? cur : []), entry]);
+      up.items.shift();   // 한 장씩 목록까지 저장 → 중간에 실패해도 다시 누르면 남은 것만 올라감
+    }
+    up.busy = false;
+    closeSheet();
+    $('galStatus').textContent = '';
+  } catch (e) {
+    console.error(e);
+    up.busy = false;
+    msg.textContent = '⚠️ 올리지 못했어. 인터넷 연결을 확인하고 다시 눌러 줘.';
+    if (up.items.length) { renderPreviews(); go.disabled = false; }
+  }
+}
+
+function onPick(e) {
+  const input = e.target;
+  const files = [...input.files];
+  input.value = '';   // 같은 사진을 다시 골라도 동작하게
+  if (!files.length) return;
+  if (!gal.remote) { $('galStatus').textContent = '⚠️ 지금은 사진을 올릴 수 없어 (Firebase 연결 필요).'; return; }
+  openSheet(files.slice(0, MAX_FILES), input.id === 'camInput', files.length > MAX_FILES);
+}
+$('camInput').addEventListener('change', onPick);
+$('pickInput').addEventListener('change', onPick);
+$('optFilm').addEventListener('change', renderPreviews);
+$('optStamp').addEventListener('change', renderPreviews);
+$('upDate').addEventListener('change', () => {
+  const v = $('upDate').value;
+  if (up.items.length === 1 && /^\d{4}-\d{2}-\d{2}$/.test(v)) { up.items[0].date = v; renderPreviews(); }
+});
+$('upCancel').addEventListener('click', closeSheet);
+$('upGo').addEventListener('click', doUpload);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('upSheet').hidden) closeSheet(); else closeLb();
+});
 
 /* ====================== 버킷리스트 (같이 수정, 내용 암호화) ====================== */
 const isConfigured = () => !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);

@@ -367,6 +367,40 @@
   .cal-day{margin-top:18px}
   .cal-day h3{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:0 0 10px}
   .who.anniv{background:#FFD3D3;border-style:dashed}
+
+  /* ===== 사진 올리기 ===== */
+  .up-btns{display:flex;gap:10px;flex-wrap:wrap;margin:-6px 0 16px}
+  .up-btns .btn{display:inline-flex;align-items:center;gap:4px;user-select:none;-webkit-user-select:none}
+  .up-btns[aria-disabled="true"] .btn{opacity:.45;pointer-events:none}
+  .ph .by{font-size:.85em;margin-right:2px}
+  .lb-cap{margin:0;font-family:var(--hand);font-size:1.3rem;text-align:center;min-height:1.2em}
+  .lb-del{background:#FFE1E1}
+  .sheet{
+    position:fixed;inset:0;z-index:45;background:rgba(242,250,235,.97);
+    display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;
+    padding:calc(env(safe-area-inset-top,0px) + 16px) 14px calc(env(safe-area-inset-bottom,0px) + 24px);
+  }
+  .sheet[hidden]{display:none!important}
+  .sheet-panel{width:min(100%,520px);margin:auto 0}
+  .sheet-panel h2{margin-bottom:12px}
+  .up-previews{display:grid;gap:10px;margin-bottom:14px}
+  .up-previews.many{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .up-previews canvas{
+    width:100%;height:auto;display:block;background:var(--mint);
+    border:2px solid var(--ink);box-shadow:0 0 0 6px #fff, 0 0 0 8px var(--ink);
+    margin:8px 0 6px;
+  }
+  .up-previews.one canvas{max-height:52vh;object-fit:contain;width:auto;max-width:calc(100% - 16px);margin:8px auto 10px}
+  .up-previews.many canvas{aspect-ratio:1;object-fit:cover;box-shadow:none}
+  .up-opts{display:flex;gap:8px 18px;flex-wrap:wrap;margin-bottom:10px}
+  .toggle{display:flex;align-items:center;gap:6px;font-family:var(--hand);font-size:1.2rem;cursor:pointer}
+  .toggle input{width:20px;height:20px;accent-color:var(--heart)}
+  .up-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--hand);font-size:1.2rem}
+  .up-row input{border:2px solid var(--ink);border-radius:8px;padding:4px 8px;font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink)}
+  .up-cap{width:100%;margin-bottom:12px;font-size:1rem}
+  .sheet .row{display:flex;gap:10px;justify-content:flex-end}
+  .sheet .status{margin:0 0 12px;min-height:1.2em}
+  #upGo[disabled]{opacity:.6;cursor:wait}
 </style>
 </head>
 <body>
@@ -427,6 +461,13 @@
     <div class="panel">
       <h2>갤러리</h2>
       <p class="sub" id="galSub">우리가 같이 찍은 사진들</p>
+      <div class="up-btns" id="upBtns">
+        <label class="btn" for="camInput">📷 지금 찍기</label>
+        <label class="btn green" for="pickInput">🖼️ 앨범에서</label>
+      </div>
+      <input class="sr" type="file" id="camInput" accept="image/*" capture="environment" tabindex="-1" aria-label="사진 찍어서 올리기">
+      <input class="sr" type="file" id="pickInput" accept="image/*" multiple tabindex="-1" aria-label="앨범에서 사진 올리기">
+      <p class="status" id="galStatus"></p>
       <div id="grid" class="grid"></div>
     </div>
   </section>
@@ -476,11 +517,37 @@
 
 <div id="lightbox" role="dialog" aria-modal="true" aria-label="사진 크게 보기">
   <img id="lbImg" alt="">
+  <p class="lb-cap" id="lbCap"></p>
   <div class="row">
     <button class="btn" id="lbClose" type="button">닫기</button>
+    <button class="btn lb-del" id="lbDel" type="button" hidden>지우기</button>
   </div>
 </div>
 
-<script type="module" src="app.js?v=calendar1"></script>
+<!-- 사진 올리기 -->
+<div id="upSheet" class="sheet" role="dialog" aria-modal="true" aria-label="사진 올리기" hidden>
+  <div class="panel sheet-panel">
+    <h2>지금 이 순간 📸</h2>
+    <div class="up-previews" id="upPreviews"></div>
+    <div class="up-opts">
+      <label class="toggle"><input type="checkbox" id="optFilm" checked> 🎞️ 필름 느낌</label>
+      <label class="toggle"><input type="checkbox" id="optStamp" checked> 📅 날짜 도장</label>
+    </div>
+    <div class="up-row" id="upDateRow"><label for="upDate">찍은 날</label><input type="date" id="upDate"></div>
+    <div class="me" role="group" aria-label="올리는 사람">
+      <span>올리는 건</span>
+      <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
+      <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
+    </div>
+    <input class="edit-in up-cap" id="upCap" type="text" maxlength="30" placeholder="한 줄 메모 (안 써도 돼)" aria-label="한 줄 메모">
+    <p class="status" id="upMsg" aria-live="polite"></p>
+    <div class="row">
+      <button class="btn" id="upCancel" type="button">취소</button>
+      <button class="btn green" id="upGo" type="button">올리기</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js?v=photos1"></script>
 </body>
 </html>

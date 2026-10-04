@@ -31,6 +31,11 @@ python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이
 4. 프로젝트 설정 → 내 앱 → 웹(</>) 앱 추가 → 나오는 값을 `config.js`에 복사
 5. (권장) Google Cloud 콘솔에서 apiKey 제한: HTTP 리퍼러를 `https://chanyoung-roh.github.io/*` 로
 
+## 2-1. 폰에서 사진 올리기 (갤러리)
+- 갤러리의 `📷 지금 찍기` / `🖼️ 앨범에서` → 필름 느낌 + 날짜 도장 → 암호화해서 Firestore `photos` 컬렉션에 저장
+- `firestore.rules`가 바뀌었으면 **콘솔 → Firestore → 규칙**에 다시 붙여넣고 게시해야 올리기가 동작해
+- 사진 한 장 ≈ 200~300KB (무료 1GiB 기준 약 3,000장). 폰에서 올린 사진만 사진 화면의 `지우기`로 지울 수 있어
+
 ## 3. 로컬 테스트
 ```bash
 python3 -m http.server 8000      # → http://localhost:8000
