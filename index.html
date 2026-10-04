@@ -33,9 +33,10 @@
     padding-bottom:env(safe-area-inset-bottom,0px);
   }
   *,*::before,*::after{box-sizing:inherit}
-  html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+  /* 문서 자체는 절대 안 움직이게: 스크롤은 .scroller 하나만 (iOS에서 바깥 페이지가 같이 튕기며 스크롤이 씹히는 문제) */
+  html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);overflow:hidden;overscroll-behavior:none}
   body{
-    height:100%;margin:0;
+    height:100%;margin:0;overflow:hidden;overscroll-behavior:none;
     background:var(--mint);color:var(--ink);
     font-family:var(--body);
     -webkit-font-smoothing:antialiased;
@@ -96,7 +97,10 @@
   /* ===== 스크롤 섹션 ===== */
   .scroller{
     position:relative;z-index:1;height:100%;
-    overflow-y:auto;scroll-snap-type:y mandatory;
+    overflow-y:auto;overflow-x:hidden;
+    /* mandatory → proximity: 화면보다 긴 섹션(일정·레시피)에서 iOS가 섹션 시작으로 되돌려 버리는 문제 */
+    scroll-snap-type:y proximity;
+    overscroll-behavior-y:none;   /* 맨 위/아래에서 튕기는 동안 다음 스와이프가 씹히는 문제 */
     -webkit-overflow-scrolling:touch;
   }
   .scene{
@@ -523,6 +527,33 @@
     width:100%;margin-top:5px;border:2px solid var(--ink);border-radius:10px;padding:4px 10px;
     font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
   }
+
+  /* ===== 섹션 바로 가기 (점 슬라이더) ===== */
+  .dotnav{position:fixed;z-index:29;right:5px;top:50%;transform:translateY(-50%)}
+  .dotnav[hidden]{display:none!important}
+  .dot-rail{
+    display:flex;flex-direction:column;align-items:center;padding:5px 0;
+    background:rgba(255,255,255,.82);border:2px solid var(--ink);border-radius:999px;
+    touch-action:none;user-select:none;-webkit-user-select:none;transition:opacity .35s;
+  }
+  .dotnav.idle .dot-rail{opacity:.5}
+  .dot-rail button{
+    width:24px;height:26px;border:none;background:none;padding:0;cursor:pointer;
+    display:grid;place-items:center;-webkit-tap-highlight-color:transparent;
+  }
+  .dot-rail button i{
+    width:9px;height:9px;border-radius:50%;border:2px solid var(--ink);background:var(--paper);
+    transition:transform .15s, background .15s;
+  }
+  .dot-rail button[aria-current="true"] i{background:var(--heart);transform:scale(1.4)}
+  .dot-label{
+    position:absolute;right:calc(100% + 8px);top:0;transform:translateY(-50%);
+    background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:1px 12px 3px;
+    font-family:var(--hand);font-weight:700;font-size:1.25rem;white-space:nowrap;
+    box-shadow:0 3px 0 var(--ink);opacity:0;pointer-events:none;transition:opacity .15s;
+  }
+  .dot-label.show{opacity:1}
+  @media (max-width:600px){ .scene{padding-right:34px} }   /* 점 슬라이더 자리 비워 두기 */
 </style>
 </head>
 <body>
@@ -559,16 +590,16 @@
 <div class="dday" id="dday" hidden></div>
 
 <main class="scroller" id="scroller">
-  <section class="scene" aria-label="곰돌찡">
+  <section data-nav="곰돌찡" class="scene" aria-label="곰돌찡">
     <div class="bubble bear">곰돌찡<span class="blush"></span></div>
     <div class="hint">내려 봐 ↓</div>
   </section>
 
-  <section class="scene" aria-label="토끼찡">
+  <section data-nav="토끼찡" class="scene" aria-label="토끼찡">
     <div class="bubble bunny">토끼찡<span class="blush"></span></div>
   </section>
 
-  <section class="scene" id="together" aria-label="곰돌찡과 토끼찡">
+  <section data-nav="우리 ♥" class="scene" id="together" aria-label="곰돌찡과 토끼찡">
     <div class="duo">
       <div class="bubble bear">곰돌찡</div>
       <svg class="heart" viewBox="0 0 64 58" aria-label="하트" role="img">
@@ -579,7 +610,7 @@
     </div>
   </section>
 
-  <section class="scene" aria-label="갤러리">
+  <section data-nav="갤러리" class="scene" aria-label="갤러리">
     <div class="panel">
       <h2>갤러리</h2>
       <p class="sub" id="galSub">우리가 같이 찍은 사진들</p>
@@ -594,7 +625,7 @@
     </div>
   </section>
 
-  <section class="scene cal-scene" aria-label="일정">
+  <section data-nav="일정" class="scene cal-scene" aria-label="일정">
     <div class="panel">
       <h2>일정</h2>
       <p class="sub" id="calSub">날짜를 누르고 일정을 적어 봐</p>
@@ -616,7 +647,7 @@
     </div>
   </section>
 
-  <section class="scene" aria-label="버킷리스트">
+  <section data-nav="버킷리스트" class="scene" aria-label="버킷리스트">
     <div class="panel">
       <h2>버킷리스트</h2>
       <p class="sub" id="count">0개 중 0개 완료</p>
@@ -635,7 +666,7 @@
     </div>
   </section>
 
-  <section class="scene last" aria-label="우리들의 레시피">
+  <section data-nav="레시피" class="scene last" aria-label="우리들의 레시피">
     <div class="panel">
       <h2>우리들의 레시피</h2>
       <p class="sub" id="rcSub">먹고 싶은 메뉴랑 레시피 링크를 모아 두자</p>
@@ -656,6 +687,12 @@
     <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_ <button class="lockbtn" id="relock" type="button">잠그기</button><button class="lockbtn" id="forget" type="button">이 기기 잊기</button></footer>
   </section>
 </main>
+
+<!-- ============ 섹션 바로 가기 (오른쪽 점 슬라이더) ============ -->
+<nav class="dotnav" id="dotnav" aria-label="섹션 바로 가기" hidden>
+  <div class="dot-rail" id="dotRail"></div>
+  <div class="dot-label" id="dotLabel" aria-hidden="true"></div>
+</nav>
 
 <div id="lightbox" role="dialog" aria-modal="true" aria-label="사진 크게 보기">
   <img id="lbImg" alt="">
@@ -718,6 +755,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=recipe3"></script>
+<script type="module" src="app.js?v=nav1"></script>
 </body>
 </html>

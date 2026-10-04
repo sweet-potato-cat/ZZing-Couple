@@ -80,6 +80,7 @@ function unlocked(key, docId) {
   initCalendar();
   initRecipes();
   initEmoticon();
+  initDotNav();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -1414,5 +1415,105 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('emoRecv').hidden) ackRecv(); else if (!$('emoPop').hidden) toggleEmoPop(false);
 });
+
+/* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
+// .scene[data-nav="이름"] 이 있는 섹션마다 점이 하나씩 자동으로 생겨 (새 섹션도 data-nav만 붙이면 됨)
+// 점 누르기 → 그 섹션으로 / 점 위를 위아래로 끌기 → 이름 보면서 빠르게 이동
+const nav = { secs: [], btns: [], cur: -1, idleT: 0, labelT: 0, drag: null, raf: 0 };
+
+function initDotNav() {
+  const rail = $('dotRail');
+  if (!rail || nav.secs.length) return;
+  nav.secs = [...document.querySelectorAll('.scene[data-nav]')];
+  nav.btns = nav.secs.map((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-label', `${s.dataset.nav}(으)로 가기`);
+    b.appendChild(document.createElement('i'));
+    b.addEventListener('click', (e) => { if (e.detail === 0) goToSection(i, 'smooth'); });   // 키보드(Enter)용
+    rail.appendChild(b);
+    return b;
+  });
+  $('dotnav').hidden = false;
+
+  rail.addEventListener('pointerdown', (e) => {
+    try { rail.setPointerCapture(e.pointerId); } catch {}
+    const i = dotIndexAt(e.clientY);
+    nav.drag = { y: e.clientY, moved: false, last: i };
+    wakeNav(); showDotLabel(i);
+  });
+  rail.addEventListener('pointermove', (e) => {
+    const d = nav.drag;
+    if (!d) return;
+    if (!d.moved && Math.abs(e.clientY - d.y) < 6) return;
+    d.moved = true;
+    const i = dotIndexAt(e.clientY);
+    if (i !== d.last) {
+      d.last = i;
+      goToSection(i, 'auto');   // 끄는 중엔 즉시 이동 (빠른 스크롤)
+      showDotLabel(i);
+      try { navigator.vibrate && navigator.vibrate(8); } catch {}
+    }
+  });
+  const end = (e, cancel) => {
+    const d = nav.drag;
+    nav.drag = null;
+    if (d && !d.moved && !cancel) goToSection(dotIndexAt(e.clientY), 'smooth');   // 그냥 톡 누르면 부드럽게
+    hideDotLabelSoon();
+  };
+  rail.addEventListener('pointerup', (e) => end(e, false));
+  rail.addEventListener('pointercancel', (e) => end(e, true));
+
+  $('scroller').addEventListener('scroll', () => {
+    if (nav.raf) return;
+    nav.raf = requestAnimationFrame(() => { nav.raf = 0; syncDotNav(); wakeNav(); });
+  }, { passive: true });
+  syncDotNav();
+  wakeNav();
+}
+
+function dotIndexAt(y) {
+  let best = 0, bd = Infinity;
+  nav.btns.forEach((b, i) => { const r = b.getBoundingClientRect(); const d = Math.abs(r.top + r.height / 2 - y); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+function goToSection(i, behavior) {
+  const s = nav.secs[i];
+  if (!s) return;
+  $('scroller').scrollTo({ top: s.offsetTop, behavior });
+  setDotCurrent(i);
+}
+function setDotCurrent(i) {
+  if (i === nav.cur) return;
+  nav.cur = i;
+  nav.btns.forEach((b, k) => b.setAttribute('aria-current', String(k === i)));
+}
+// 지금 보고 있는 섹션: 화면 위쪽 35% 지점이 들어 있는 섹션 (맨 아래면 마지막)
+function syncDotNav() {
+  if (nav.drag && nav.drag.moved) return;
+  const sc = $('scroller'), y = sc.scrollTop + sc.clientHeight * 0.35;
+  let i = 0;
+  nav.secs.forEach((s, k) => { if (s.offsetTop <= y) i = k; });
+  if (sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 2) i = nav.secs.length - 1;
+  setDotCurrent(i);
+}
+function wakeNav() {
+  const el = $('dotnav');
+  el.classList.remove('idle');
+  clearTimeout(nav.idleT);
+  nav.idleT = setTimeout(() => { if (!nav.drag) el.classList.add('idle'); }, 1800);
+}
+function showDotLabel(i) {
+  const lab = $('dotLabel'), b = nav.btns[i];
+  if (!b) return;
+  clearTimeout(nav.labelT);
+  const r = b.getBoundingClientRect(), n = $('dotnav').getBoundingClientRect();
+  lab.textContent = nav.secs[i].dataset.nav;
+  lab.style.top = `${r.top + r.height / 2 - n.top}px`;
+  lab.classList.add('show');
+}
+function hideDotLabelSoon() {
+  clearTimeout(nav.labelT);
+  nav.labelT = setTimeout(() => $('dotLabel').classList.remove('show'), 700);
+}
 
 boot();
