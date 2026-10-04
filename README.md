@@ -36,6 +36,11 @@ python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이
 - `firestore.rules`가 바뀌었으면 **콘솔 → Firestore → 규칙**에 다시 붙여넣고 게시해야 올리기가 동작해
 - 사진 한 장 ≈ 200~300KB (무료 1GiB 기준 약 3,000장). 폰에서 올린 사진만 사진 화면의 `지우기`로 지울 수 있어
 
+## 2-2. 이모티콘 (오른쪽 아래 하트)
+- 누르면 상대방 화면에 바로 뜨고, 상대가 페이지를 안 열어 뒀으면 다음에 열 때 떠 (푸시 알림은 아직 X)
+- 새 이모티콘: `assets/emoticon/`에 그림(정사각형 PNG 추천) 넣고 → `python3 update_emoticons.py` → `list.json`에서 이름표 고치기 → push
+- 처음 쓰는 기기에서는 🐻/🐰 "나는 누구?"를 한 번 골라야 보낼 수 있어
+
 ## 3. 로컬 테스트
 ```bash
 python3 -m http.server 8000      # → http://localhost:8000

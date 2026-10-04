@@ -401,6 +401,73 @@
   .sheet .row{display:flex;gap:10px;justify-content:flex-end}
   .sheet .status{margin:0 0 12px;min-height:1.2em}
   #upGo[disabled]{opacity:.6;cursor:wait}
+
+  /* ===== 이모티콘 ===== */
+  .emo-fab{
+    position:fixed;z-index:30;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));
+    width:58px;height:58px;border-radius:50%;padding:0;cursor:pointer;
+    background:var(--paper);border:var(--line);box-shadow:0 4px 0 var(--ink);
+    display:grid;place-items:center;-webkit-tap-highlight-color:transparent;
+    transition:bottom .25s ease, transform .08s, box-shadow .08s;
+  }
+  .emo-fab svg{width:32px;height:auto;margin-top:2px}
+  .emo-fab:active{transform:translateY(4px);box-shadow:0 0 0 var(--ink)}
+  .emo-fab[aria-expanded="true"]{background:var(--bear)}
+  .emo-fab.unread svg{animation:beat 1.1s ease-in-out infinite}
+  @keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}}
+  .emo-dot{
+    position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;
+    background:#E8696A;border:2.5px solid var(--ink);
+  }
+  .emo-pop{
+    position:fixed;z-index:31;right:16px;bottom:calc(88px + env(safe-area-inset-bottom,0px));
+    width:min(calc(100vw - 32px),340px);max-height:calc(100% - 120px);overflow-y:auto;
+    background:var(--paper);border:var(--line);border-radius:18px;padding:12px 14px 10px;
+    box-shadow:0 5px 0 var(--ink);transform-origin:bottom right;animation:popin .18s ease-out;
+  }
+  @keyframes popin{from{opacity:0;transform:scale(.85) translateY(10px)}}
+  .emo-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .emo-head b{font-family:var(--hand);font-size:1.35rem}
+  .emo-me{margin:0 0 10px;font-size:1.1rem}
+  .emo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .emo-grid button{
+    border:2px solid var(--ink);border-radius:14px;background:var(--paper);padding:2px;cursor:pointer;
+    aspect-ratio:1;-webkit-tap-highlight-color:transparent;transition:transform .1s;
+  }
+  .emo-grid button:active{transform:scale(.9);background:var(--mint)}
+  .emo-grid button[disabled]{opacity:.35;cursor:not-allowed}
+  .emo-grid img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
+  .emo-log{list-style:none;margin:10px 0 0;padding:8px 0 0;border-top:2px dotted #bbb;font-size:.92rem}
+  .emo-log:empty{display:none}
+  .emo-log li{display:flex;align-items:center;gap:8px;padding:3px 0;color:#444}
+  .emo-log img{width:28px;height:28px;object-fit:contain;flex:none}
+  .emo-log .lt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .emo-log .rd{flex:none;font-size:.82rem;color:#7FB98A;font-weight:700}
+  .emo-log .tm{flex:none;font-size:.82rem;color:#888}
+  .emo-toast{
+    position:fixed;z-index:32;left:50%;transform:translateX(-50%);
+    bottom:calc(92px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 32px);
+    background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:4px 14px 5px;
+    font-family:var(--hand);font-size:1.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    box-shadow:0 3px 0 var(--ink);animation:toastin .2s ease-out;
+  }
+  @keyframes toastin{from{opacity:0;transform:translate(-50%,8px)}}
+  .emo-recv{
+    position:fixed;inset:0;z-index:48;background:rgba(242,250,235,.93);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .emo-recv[hidden],.emo-pop[hidden],.emo-toast[hidden],.emo-fab[hidden]{display:none!important}
+  .emo-card{
+    width:min(100%,320px);background:var(--paper);border:var(--line);border-radius:24px;
+    padding:18px 18px 16px;text-align:center;box-shadow:0 5px 0 var(--ink);
+    animation:recvin .45s cubic-bezier(.3,1.6,.5,1);
+  }
+  @keyframes recvin{from{opacity:0;transform:scale(.6) rotate(-6deg)}}
+  .emo-from{margin:0 0 6px;font-family:var(--hand);font-weight:700;font-size:1.3rem}
+  .emo-card img{width:min(62vw,200px);aspect-ratio:1;object-fit:contain;display:block;margin:0 auto}
+  .emo-more{display:flex;justify-content:center;align-items:center;gap:4px;flex-wrap:wrap;min-height:4px;margin:4px 0 12px;font-size:.9rem;color:#666}
+  .emo-more img{width:38px;height:38px;margin:0}
+  .emo-card .row{display:flex;gap:10px;justify-content:center}
 </style>
 </head>
 <body>
@@ -548,6 +615,34 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=photos1"></script>
+<!-- ============ 이모티콘 (간단 의사소통) ============ -->
+<button class="emo-fab" id="emoFab" type="button" aria-label="이모티콘 보내기" aria-expanded="false" aria-controls="emoPop" hidden>
+  <svg viewBox="0 0 64 58" aria-hidden="true"><path d="M32 54 C10 38 3 28 3 18 C3 9 10 3 18 3 C24 3 29 7 32 12 C35 7 40 3 46 3 C54 3 61 9 61 18 C61 28 54 38 32 54Z" fill="#FF8E8F" stroke="#1f1f1f" stroke-width="4.5" stroke-linejoin="round"/></svg>
+  <span class="emo-dot" id="emoDot" hidden></span>
+</button>
+<div class="emo-pop" id="emoPop" role="dialog" aria-label="이모티콘 보내기" hidden>
+  <div class="emo-head"><b id="emoTo">보내기</b><button class="tool" id="emoClose" type="button" aria-label="닫기">✕</button></div>
+  <div class="me emo-me" id="emoMe" role="group" aria-label="나는 누구?" hidden>
+    <span>먼저, 나는</span>
+    <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
+    <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
+  </div>
+  <div class="emo-grid" id="emoGrid"></div>
+  <ul class="emo-log" id="emoLog" aria-label="최근 주고받은 이모티콘"></ul>
+</div>
+<div class="emo-toast" id="emoToast" role="status" aria-live="polite" hidden></div>
+<div class="emo-recv" id="emoRecv" role="dialog" aria-modal="true" aria-labelledby="emoFrom" hidden>
+  <div class="emo-card">
+    <p class="emo-from" id="emoFrom"></p>
+    <img id="emoImg" alt="">
+    <div class="emo-more" id="emoMore"></div>
+    <div class="row">
+      <button class="btn" id="emoReply" type="button">답장하기</button>
+      <button class="btn green" id="emoOk" type="button">알겠어 ♥</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js?v=emoticon1"></script>
 </body>
 </html>

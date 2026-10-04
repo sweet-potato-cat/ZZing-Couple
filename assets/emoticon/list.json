@@ -1,0 +1,30 @@
+[
+  {
+    "file": "eat.png",
+    "label": "밥 먹어써?"
+  },
+  {
+    "file": "eat_bear.png",
+    "label": "밥 먹어써?"
+  },
+  {
+    "file": "yes.png",
+    "label": "넹"
+  },
+  {
+    "file": "no_bear.png",
+    "label": "시러"
+  },
+  {
+    "file": "kind.png",
+    "label": "아이 착해"
+  },
+  {
+    "file": "thx_rab.png",
+    "label": "감사합니다"
+  },
+  {
+    "file": "check_rab.png",
+    "label": "확인 부탁드립니다"
+  }
+]

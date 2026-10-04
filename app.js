@@ -78,6 +78,7 @@ function unlocked(key, docId) {
   initGallery();
   initBucket();
   initCalendar();
+  initEmoticon();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -971,5 +972,191 @@ if ($('cal')) {
     calMutate((cur) => [...(Array.isArray(cur) ? cur : []), ev]);
   });
 }
+
+/* ====================== 이모티콘 (간단 의사소통) ====================== */
+// 하트 버튼 → 이모티콘 누르면 상대방에게 전달.
+// 상대가 페이지를 열어 두고 있으면 바로, 아니면 다음에 열 때 뜸 (푸시 알림은 서버가 필요해서 아직 X)
+// 저장: couples/{sha256(docId + ':emoticon')} = 암호화된 { msgs: [...최근 40개], seen: { bear, bunny } }
+const EMO_DIR = 'assets/emoticon/';
+const EMO_MAX = 40;                       // 최근 40개만 보관
+const EMO_FRESH_MS = 3 * 86400000;        // 3일 넘은 건 받아도 안 띄움
+const EMO_SEEN_KEY = 'couple-emo-seen', EMO_SENT_KEY = 'couple-emo-sent';
+const WHO = { bear: { name: '곰돌찡', icon: '🐻' }, bunny: { name: '토끼찡', icon: '🐰' } };
+const partnerOf = (me) => (me === 'bear' ? 'bunny' : me === 'bunny' ? 'bear' : null);
+const emo = { list: [], store: null, data: { msgs: [], seen: {} }, queue: [], lastSend: 0, toastT: 0 };
+
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const normEmo = (v) => (v && !Array.isArray(v) && Array.isArray(v.msgs) ? { msgs: v.msgs, seen: v.seen || {} } : { msgs: [], seen: {} });
+const emoLabel = (file) => (emo.list.find((x) => x.file === file) || {}).label || '';
+function ago(t) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return '방금';
+  if (s < 3600) return `${Math.floor(s / 60)}분 전`;
+  if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
+  const d = new Date(t); return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+function emoImg(file, alt = '') {
+  const im = document.createElement('img');
+  im.src = EMO_DIR + encodeURIComponent(file); im.alt = alt; im.decoding = 'async';
+  return im;
+}
+
+async function initEmoticon() {
+  try {
+    const r = await fetch(EMO_DIR + 'list.json', { cache: 'no-cache' });
+    emo.list = r.ok ? await r.json() : [];
+  } catch { emo.list = []; }
+  if (!emo.list.length) return;
+  $('emoFab').hidden = false;
+  emo.list.forEach((x) => { const i = new Image(); i.src = EMO_DIR + encodeURIComponent(x.file); });   // 미리 받아 두기
+  renderEmoPop();
+  // 오류 메시지는 토스트로만 (status 칸 대신)
+  const statusSink = { set textContent(v) { if (v && v.startsWith('⚠️')) emoToast(v); } };
+  emo.store = await openStore(await sha256hex(state.docId + ':emoticon'), 'couple-emo-local', statusSink, '이모티콘');
+  emo.store.subscribe((v) => { emo.data = normEmo(v); onEmoData(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) onEmoData(); });
+  watchFooter();
+}
+
+// 받은 것 중 아직 확인 안 한 것 찾기
+function onEmoData() {
+  const me = getMe();
+  const seen = Math.max(lsGet(EMO_SEEN_KEY, 0), (me && emo.data.seen[me]) || 0);
+  const sent = lsGet(EMO_SENT_KEY, []);
+  const fresh = Date.now() - EMO_FRESH_MS;
+  emo.queue = emo.data.msgs.filter((m) =>
+    m.at > seen && m.at > fresh && (me ? m.from !== me : !sent.includes(m.id)));
+  const unread = emo.queue.length > 0;
+  $('emoDot').hidden = !unread;
+  $('emoFab').classList.toggle('unread', unread);
+  if (!$('emoPop').hidden) renderEmoPop();
+  if (unread && !document.hidden) showRecv();
+  else if (!unread) $('emoRecv').hidden = true;
+}
+
+function showRecv() {
+  const q = emo.queue, m = q[q.length - 1];   // 가장 최근 것을 크게
+  const who = WHO[m.from];
+  $('emoFrom').textContent = who ? `${who.icon} ${who.name}이 보냈어 · ${ago(m.at)}` : `♥ 도착했어 · ${ago(m.at)}`;
+  const img = $('emoImg');
+  img.src = EMO_DIR + encodeURIComponent(m.e); img.alt = emoLabel(m.e);
+  const more = $('emoMore'); more.innerHTML = '';
+  if (q.length > 1) {
+    more.append('그 전에 ');
+    q.slice(0, -1).slice(-5).forEach((x) => more.appendChild(emoImg(x.e, emoLabel(x.e))));
+    if (q.length - 1 > 5) more.append(` +${q.length - 6}`);
+  }
+  const wasHidden = $('emoRecv').hidden;
+  $('emoRecv').hidden = false;
+  if (wasHidden) { try { navigator.vibrate && navigator.vibrate([60, 40, 60]); } catch {} $('emoOk').focus(); }
+}
+
+async function ackRecv() {
+  const q = emo.queue;
+  $('emoRecv').hidden = true;
+  if (!q.length) return;
+  const last = Math.max(...q.map((m) => m.at));
+  lsSet(EMO_SEEN_KEY, Math.max(lsGet(EMO_SEEN_KEY, 0), last));
+  emo.queue = [];
+  $('emoDot').hidden = true; $('emoFab').classList.remove('unread');
+  const me = getMe();
+  if (me && emo.store) {   // 읽음 표시 (상대 화면에 "읽음 ✓")
+    try { await emo.store.mutate((d) => { d = normEmo(d); d.seen = { ...d.seen, [me]: Math.max(d.seen[me] || 0, last) }; return d; }); }
+    catch (e) { console.error(e); }
+  }
+}
+
+function renderEmoPop() {
+  const me = getMe(), to = partnerOf(me);
+  $('emoTo').textContent = to ? `${WHO[to].icon} ${WHO[to].name}한테 보내기` : '이모티콘 보내기';
+  $('emoMe').hidden = !!me;
+  const grid = $('emoGrid');
+  grid.innerHTML = '';
+  emo.list.forEach((x) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.disabled = !me; b.title = x.label;
+    b.setAttribute('aria-label', `${x.label} 보내기`);
+    b.appendChild(emoImg(x.file));
+    b.addEventListener('click', () => sendEmo(x.file));
+    grid.appendChild(b);
+  });
+  // 최근 주고받은 것 (최신 6개)
+  const log = $('emoLog'); log.innerHTML = '';
+  emo.data.msgs.slice(-6).reverse().forEach((m) => {
+    const li = document.createElement('li');
+    const mine = me ? m.from === me : lsGet(EMO_SENT_KEY, []).includes(m.id);
+    const t = document.createElement('span'); t.className = 'lt';
+    t.textContent = `${(WHO[m.from] || {}).icon || '♥'} ${mine ? '내가' : (WHO[m.from] || {}).name || ''} · ${emoLabel(m.e)}`;
+    const tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = ago(m.at);
+    li.append(emoImg(m.e), t);
+    if (mine && to && (emo.data.seen[to] || 0) >= m.at) {
+      const rd = document.createElement('span'); rd.className = 'rd'; rd.textContent = '읽음 ✓'; li.appendChild(rd);
+    }
+    li.appendChild(tm);
+    log.appendChild(li);
+  });
+}
+
+function toggleEmoPop(open) {
+  const pop = $('emoPop');
+  open = open ?? pop.hidden;
+  if (open) { renderEmoPop(); $('emoToast').hidden = true; }
+  pop.hidden = !open;
+  $('emoFab').setAttribute('aria-expanded', String(open));
+}
+
+function emoToast(text, file) {
+  const el = $('emoToast');
+  el.innerHTML = '';
+  if (file) { const i = emoImg(file); i.style.cssText = 'width:24px;height:24px;vertical-align:-6px;margin-right:4px'; el.appendChild(i); }
+  el.append(text);
+  el.hidden = false;
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  clearTimeout(emo.toastT);
+  emo.toastT = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+async function sendEmo(file) {
+  const me = getMe(), to = partnerOf(me);
+  if (!me || !emo.store) return;
+  if (Date.now() - emo.lastSend < 700) return;   // 연타 방지
+  emo.lastSend = Date.now();
+  const m = { id: hex(crypto.getRandomValues(new Uint8Array(8))), e: file, from: me, at: Date.now() };
+  lsSet(EMO_SENT_KEY, [...lsGet(EMO_SENT_KEY, []), m.id].slice(-60));
+  toggleEmoPop(false);
+  emoToast(`${WHO[to].name}한테 "${emoLabel(file)}" 보냈어!`, file);
+  try {
+    await emo.store.mutate((d) => { d = normEmo(d); d.msgs = [...d.msgs, m].slice(-EMO_MAX); return d; });
+  } catch (e) {
+    console.error(e);
+    emoToast('⚠️ 못 보냈어. 인터넷 연결을 확인해 줘.');
+  }
+}
+
+// 맨 아래 footer가 보이면 하트 버튼을 그 위로 올리기 (겹치지 않게)
+function watchFooter() {
+  const f = document.querySelector('footer'), fab = $('emoFab');
+  if (!f || !('IntersectionObserver' in window)) return;
+  new IntersectionObserver(([en]) => {
+    fab.style.bottom = en.isIntersecting ? `calc(${Math.round(f.offsetHeight) + 26}px + env(safe-area-inset-bottom,0px))` : '';
+    $('emoPop').style.bottom = en.isIntersecting ? `calc(${Math.round(f.offsetHeight) + 98}px + env(safe-area-inset-bottom,0px))` : '';
+  }, { root: $('scroller'), threshold: 0.01 }).observe(f);
+}
+
+$('emoFab').addEventListener('click', () => toggleEmoPop());
+$('emoClose').addEventListener('click', () => toggleEmoPop(false));
+$('emoOk').addEventListener('click', ackRecv);
+$('emoReply').addEventListener('click', async () => { await ackRecv(); toggleEmoPop(true); });
+$('emoMe').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setTimeout(() => { renderEmoPop(); onEmoData(); }, 0)));
+document.addEventListener('click', (e) => {   // 바깥 누르면 닫기
+  const pop = $('emoPop');
+  if (pop.hidden || !e.target.isConnected) return;   // 다시 그려져서 사라진 버튼 클릭은 무시
+  if (!pop.contains(e.target) && !$('emoFab').contains(e.target) && !$('emoRecv').contains(e.target)) toggleEmoPop(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('emoRecv').hidden) ackRecv(); else if (!$('emoPop').hidden) toggleEmoPop(false);
+});
 
 boot();
