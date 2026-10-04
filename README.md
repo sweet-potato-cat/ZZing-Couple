@@ -41,6 +41,11 @@ python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이
 - 새 이모티콘: `assets/emoticon/`에 그림(정사각형 PNG 추천) 넣고 → `python3 update_emoticons.py` → `list.json`에서 이름표 고치기 → push
 - 처음 쓰는 기기에서는 🐻/🐰 "나는 누구?"를 한 번 골라야 보낼 수 있어
 
+## 2-3. 우리들의 레시피 (맨 아래)
+- 메뉴 이름 + 레시피 링크(선택) → 추가. 앱의 "공유 → 복사" 문구를 링크 칸에 붙여 넣으면 링크만 뽑고 메뉴 이름도 채워 줘
+- 별 1~5개로 맛 표시, 같은 별을 한 번 더 누르면 "아직 안 먹어 봄"으로 돌아가
+- 링크는 http/https 주소만 저장돼 (이상한 링크는 거절)
+
 ## 3. 로컬 테스트
 ```bash
 python3 -m http.server 8000      # → http://localhost:8000

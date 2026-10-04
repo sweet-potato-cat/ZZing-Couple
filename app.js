@@ -78,6 +78,7 @@ function unlocked(key, docId) {
   initGallery();
   initBucket();
   initCalendar();
+  initRecipes();
   initEmoticon();
 }
 
@@ -970,6 +971,170 @@ if ($('cal')) {
     const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: cal.sel, title: v, by: getMe() || '', at: Date.now() };
     input.value = '';
     calMutate((cur) => [...(Array.isArray(cur) ? cur : []), ev]);
+  });
+}
+
+/* ====================== 우리들의 레시피 ====================== */
+// 메뉴 + 레시피 링크 + 별점(1~5, 0 = 아직 안 먹어봄). 버킷리스트처럼 같이 수정, 내용 암호화.
+// 저장: couples/{sha256(docId + ':recipes')} = 암호화된 [{ id, name, url, stars, by, at }]
+const rc = { store: null, items: [], editId: null };
+
+// http/https 링크만 허용 (javascript: 같은 건 거절). 공유 문구에 섞인 링크도 뽑아냄.
+function cleanUrl(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  const m = text.match(/https?:\/\/[^\s<>"'`]+/i);
+  let u = m ? m[0] : text;
+  if (!/^https?:\/\//i.test(u)) {
+    if (/^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(u)) u = 'https://' + u;   // "youtu.be/abc" 처럼 입력해도 OK
+    else return null;
+  }
+  try {
+    const x = new URL(u);
+    return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : null;
+  } catch { return null; }
+}
+function srcLabel(url) {
+  try {
+    const h = new URL(url).hostname.replace(/^(www|m)\./, '');
+    const known = { 'youtube.com': 'YouTube', 'youtu.be': 'YouTube', '10000recipe.com': '만개의레시피',
+      'instagram.com': 'Instagram', 'blog.naver.com': '네이버 블로그', 'naver.com': '네이버', 'tiktok.com': 'TikTok' };
+    return known[h] || h;
+  } catch { return ''; }
+}
+
+async function initRecipes() {
+  if (!$('rcList')) return;
+  rc.store = await openStore(await sha256hex(state.docId + ':recipes'), 'couple-recipes-local', $('rcStatus'), '레시피');
+  rc.store.subscribe((next) => {
+    rc.items = Array.isArray(next) ? next : [];
+    // 수정 중에 상대방이 바꾼 게 들어와도 입력하던 글자가 날아가지 않게, 수정 끝나고 다시 그림
+    if (rc.editId && $('rcList').contains(document.activeElement)) return;
+    renderRecipes();
+  });
+}
+
+async function rcMutate(fn) {
+  try { await rc.store.mutate((cur) => fn(Array.isArray(cur) ? cur : [])); }
+  catch (e) { console.error(e); $('rcStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; }
+}
+
+function starButtons(it) {
+  const box = document.createElement('span');
+  box.className = 'rc-stars'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', '얼마나 맛있었어?');
+  for (let n = 1; n <= 5; n++) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = '★';
+    b.className = n <= (it.stars || 0) ? 'on' : '';
+    b.setAttribute('aria-label', `별 ${n}개`);
+    b.setAttribute('aria-pressed', String((it.stars || 0) === n));
+    // 같은 별을 한 번 더 누르면 0개 (아직 안 먹어봄)
+    b.onclick = () => rcMutate((cur) => cur.map((x) => x.id === it.id ? { ...x, stars: (x.stars || 0) === n ? 0 : n } : x));
+    box.appendChild(b);
+  }
+  return box;
+}
+
+function renderRecipes() {
+  const list = $('rcList');
+  list.innerHTML = '';
+  const items = [...rc.items].sort((a, b) => (b.at || 0) - (a.at || 0));   // 최신 순
+  const tried = items.filter((x) => x.stars > 0);
+  const avg = tried.length ? (tried.reduce((s, x) => s + x.stars, 0) / tried.length) : 0;
+  $('rcSub').textContent = items.length
+    ? `${items.length}개 중 ${tried.length}개 먹어 봤어` + (tried.length ? ` · 평균 ★${avg.toFixed(1)}` : '')
+    : '먹고 싶은 메뉴랑 레시피 링크를 모아 두자';
+
+  if (!items.length) {
+    const li = document.createElement('li'); li.className = 'empty-row';
+    li.textContent = '먹고 싶은 걸 첫 번째로 적어 봐 🍳';
+    list.appendChild(li);
+    return;
+  }
+  items.forEach((it) => {
+    const li = document.createElement('li');
+    const who = document.createElement('span');
+    who.className = 'who ' + (it.by || '');
+    who.textContent = it.by === 'bear' ? '🐻' : it.by === 'bunny' ? '🐰' : '♥';
+    who.title = it.by === 'bear' ? '곰돌찡이 추가' : it.by === 'bunny' ? '토끼찡이 추가' : '';
+
+    const main = document.createElement('div'); main.className = 'rc-main';
+    const tools = document.createElement('div'); tools.className = 'rc-tools';
+
+    if (rc.editId === it.id) {
+      const form = document.createElement('form'); form.className = 'rc-edit';
+      const n = document.createElement('input'); n.value = it.name; n.maxLength = 40; n.setAttribute('aria-label', '메뉴 이름 수정');
+      const u = document.createElement('input'); u.value = it.url || ''; u.placeholder = '레시피 링크'; u.inputMode = 'url';
+      u.autocapitalize = 'off'; u.spellcheck = false; u.setAttribute('aria-label', '레시피 링크 수정');
+      const save = () => {
+        const name = n.value.trim(), url = cleanUrl(u.value);
+        if (!name) { n.focus(); return; }
+        if (url === null) { $('rcMsg').textContent = '링크는 https:// 로 시작하는 주소만 넣을 수 있어'; u.focus(); return; }
+        $('rcMsg').textContent = '';
+        rc.editId = null;
+        rcMutate((cur) => cur.map((x) => x.id === it.id ? { ...x, name, url } : x));
+      };
+      form.addEventListener('submit', (e) => { e.preventDefault(); save(); });
+      // 입력칸이 2개라 Enter로 form 제출이 안 돼서 직접 처리
+      [n, u].forEach((el) => el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { rc.editId = null; renderRecipes(); }
+      }));
+      const sv = document.createElement('button'); sv.type = 'submit'; sv.className = 'tool'; sv.textContent = '✓';
+      sv.setAttribute('aria-label', '저장'); sv.style.opacity = '1';
+      form.append(n, u);
+      main.appendChild(form);
+      sv.addEventListener('click', (e) => { e.preventDefault(); save(); });
+      tools.appendChild(sv);
+      setTimeout(() => n.focus(), 0);
+    } else {
+      const safe = cleanUrl(it.url);   // 저장된 값도 한 번 더 검사
+      let name;
+      if (safe) {
+        name = document.createElement('a'); name.href = safe; name.target = '_blank'; name.rel = 'noopener noreferrer';
+      } else {
+        name = document.createElement('span');
+      }
+      name.className = 'rc-name'; name.textContent = it.name;
+      const meta = document.createElement('div'); meta.className = 'rc-meta';
+      meta.appendChild(starButtons(it));
+      if (!it.stars) { const none = document.createElement('span'); none.className = 'rc-none'; none.textContent = '아직 안 먹어 봄'; meta.appendChild(none); }
+      if (safe) { const src = document.createElement('span'); src.className = 'rc-src'; src.textContent = srcLabel(safe); meta.appendChild(src); }
+      main.append(name, meta);
+
+      const ed = document.createElement('button'); ed.className = 'tool'; ed.type = 'button';
+      ed.setAttribute('aria-label', '수정'); ed.textContent = '✎';
+      ed.onclick = () => { rc.editId = it.id; renderRecipes(); };
+      const del = document.createElement('button'); del.className = 'tool'; del.type = 'button';
+      del.setAttribute('aria-label', '삭제'); del.textContent = '✕';
+      del.onclick = () => { if (confirm(`"${it.name}" 레시피 지울까?`)) rcMutate((cur) => cur.filter((x) => x.id !== it.id)); };
+      tools.append(ed, del);
+    }
+    li.append(who, main, tools);
+    list.appendChild(li);
+  });
+}
+
+if ($('rcForm')) {
+  // 공유 문구("[만개의레시피] 김치찌개 https://...")를 링크 칸에 붙여 넣으면 메뉴 이름도 채워 줌
+  $('rcUrl').addEventListener('paste', () => setTimeout(() => {
+    const raw = $('rcUrl').value, url = cleanUrl(raw);
+    if (!url) return;
+    const m = raw.match(/https?:\/\/[^\s<>"'`]+/i);
+    const rest = m ? raw.replace(m[0], '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim() : '';
+    $('rcUrl').value = url;
+    if (rest && !$('rcName').value.trim()) $('rcName').value = rest.slice(0, 40);
+  }, 0));
+  $('rcForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('rcName').value.trim(), url = cleanUrl($('rcUrl').value), msg = $('rcMsg');
+    if (!name) { msg.textContent = '먹고 싶은 메뉴 이름을 적어 줘'; $('rcName').focus(); return; }
+    if (url === null) { msg.textContent = '링크는 https:// 로 시작하는 주소만 넣을 수 있어'; $('rcUrl').focus(); return; }
+    if (!rc.store) return;
+    msg.textContent = '';
+    const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, url, stars: 0, by: getMe() || '', at: Date.now() };
+    $('rcName').value = ''; $('rcUrl').value = '';
+    rcMutate((cur) => [...cur, item]);
   });
 }
 
