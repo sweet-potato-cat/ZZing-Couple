@@ -586,6 +586,60 @@
   }
   .dot-label.show{opacity:1}
   @media (max-width:600px){ .scene{padding-right:34px} }   /* 점 슬라이더 자리 비워 두기 */
+
+  /* ===== 서로 더 알아가기 ===== */
+  .qa-card{border:var(--line);border-radius:18px;background:var(--mint);padding:14px 14px 12px;box-shadow:0 4px 0 var(--ink)}
+  .qa-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .qa-chip{font-size:.82rem;border:1.5px solid var(--ink);border-radius:999px;padding:0 9px;background:var(--paper);white-space:nowrap}
+  .qa-kind{font-family:var(--hand);font-size:1.05rem;color:#666}
+  .qa-q{font-family:var(--hand);font-weight:700;font-size:1.6rem;line-height:1.25;margin:2px 0 12px;word-break:keep-all}
+  .qa-opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .qa-opts button{
+    border:2px solid var(--ink);border-radius:999px;background:var(--paper);cursor:pointer;
+    padding:4px 14px 6px;font-family:var(--body);font-size:.98rem;-webkit-tap-highlight-color:transparent;
+    transition:transform .1s, background .12s;
+  }
+  .qa-opts button:active{transform:scale(.95)}
+  .qa-opts button[aria-pressed="true"]{background:var(--bear);box-shadow:0 2px 0 var(--ink);font-weight:700}
+  .qa-form{display:flex;gap:8px;align-items:center}
+  .qa-form input{
+    flex:1;min-width:0;border:2px solid var(--ink);border-radius:12px;padding:7px 10px;
+    font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
+  }
+  .qa-form .btn{padding:6px 14px;font-size:1.15rem}
+  .qa-form .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .qa-lock{font-family:var(--hand);font-size:1.15rem;margin:0 0 10px}
+  .qa-ans{display:grid;gap:6px;margin:0 0 8px}
+  .qa-a{border-radius:12px;padding:5px 12px 7px;font-size:1rem;word-break:keep-all;overflow-wrap:anywhere;border:2px solid var(--ink)}
+  .qa-a.bear{background:#FFF3E3}
+  .qa-a.bunny{background:#FDE7EA}
+  .qa-a b{font-family:var(--hand);font-size:1.1rem;margin-right:6px}
+  .qa-a .memo{color:#666}
+  .qa-a.hidden{background:var(--paper);border-style:dashed;color:#888}
+  .qa-match{display:inline-block;font-family:var(--hand);font-weight:700;font-size:1.2rem;margin:2px 0 6px}
+  .qa-link{border:none;background:none;padding:0;cursor:pointer;color:#777;text-decoration:underline;font-size:.9rem}
+  .qa-me{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-family:var(--hand);font-size:1.2rem}
+  .qa-me button{border:2px solid var(--ink);border-radius:999px;background:var(--paper);padding:2px 12px;font-family:var(--hand);font-size:1.15rem;cursor:pointer}
+  .qa-pending{display:grid;gap:6px;margin-top:12px}
+  .qa-pending:empty{display:none}
+  .qa-pending > p{margin:0;font-family:var(--hand);font-size:1.15rem}
+  .qa-pending button{
+    text-align:left;border:2px dashed var(--ink);border-radius:12px;background:var(--paper);cursor:pointer;
+    padding:5px 10px 6px;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .qa-actions{display:flex;justify-content:flex-end;margin-top:12px}
+  .qa-actions .btn{font-size:1.15rem;padding:6px 14px}
+  .qa-archive{margin-top:14px;border-top:2px dotted #bbb;padding-top:10px}
+  .qa-archive summary{cursor:pointer;font-family:var(--hand);font-weight:700;font-size:1.25rem;list-style:none}
+  .qa-archive summary::-webkit-details-marker{display:none}
+  .qa-archive summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
+  .qa-archive[open] summary::before{transform:rotate(90deg)}
+  .qa-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:10px}
+  .qa-list li{border-bottom:2px dotted #ddd;padding-bottom:10px}
+  .qa-list .lq{font-weight:700;margin:2px 0 6px;word-break:keep-all}
+  .qa-list .qa-a{font-size:.95rem;padding:3px 10px 5px}
+  .qa-listmore{margin-top:8px;border:2px solid var(--ink);border-radius:999px;background:var(--paper);padding:1px 14px 3px;font-family:var(--hand);font-size:1.05rem;cursor:pointer}
+  .dot-rail button.has-new i{background:#E8696A;box-shadow:0 0 0 3px #FFD3D3}
 </style>
 </head>
 <body>
@@ -639,6 +693,24 @@
               fill="#FF8E8F" stroke="#1f1f1f" stroke-width="3.5" stroke-linejoin="round"/>
       </svg>
       <div class="bubble bunny">토끼찡</div>
+    </div>
+  </section>
+
+  <section data-nav="알아가기" class="scene" aria-label="서로 더 알아가기">
+    <div class="panel">
+      <h2>서로 더 알아가기</h2>
+      <p class="sub" id="qaSub">매일 질문 하나! 둘 다 답하면 열려</p>
+      <p class="status" id="qaStatus"></p>
+      <div class="qa-card" id="qaCard" aria-live="polite"></div>
+      <div class="qa-pending" id="qaPending"></div>
+      <div class="qa-actions">
+        <button type="button" class="btn green" id="qaMore">하나 더 할래? →</button>
+      </div>
+      <details class="qa-archive" id="qaArchive">
+        <summary id="qaArchSum">지난 문답 보기</summary>
+        <ul class="qa-list" id="qaList"></ul>
+        <button type="button" class="qa-listmore" id="qaListMore" hidden>더 보기</button>
+      </details>
     </div>
   </section>
 
@@ -794,6 +866,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=galstrip1"></script>
+<script type="module" src="app.js?v=qa1"></script>
 </body>
 </html>

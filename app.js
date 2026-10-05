@@ -1,4 +1,5 @@
 import * as CFG from './config.js';
+import { QUESTIONS } from './questions.js?v=1';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -81,6 +82,7 @@ function unlocked(key, docId) {
   initRecipes();
   initEmoticon();
   initDotNav();
+  initQna();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -1557,6 +1559,262 @@ function showDotLabel(i) {
 function hideDotLabelSoon() {
   clearTimeout(nav.labelT);
   nav.labelT = setTimeout(() => $('dotLabel').classList.remove('show'), 700);
+}
+
+/* ====================== 서로 더 알아가기 (오늘의 질문) ====================== */
+// 하루 한 질문: 그날 처음 연 사람이 정하고(공유 문서에 기록) 둘이 같은 질문을 봐.
+// 내가 답해야 상대 답이 보여 (화면에서 가리는 것 — 데이터는 둘의 열쇠로 암호화돼 있음)
+// 저장: couples/{sha256(docId + ':qna')} = 암호화된 { days: { 'YYYY-MM-DD': qid }, a: { qid: { bear: {...}, bunny: {...} } } }
+//   답: 보기 질문 { c: 보기번호, n: 한마디, at } / 글 질문 { t: 글, at }
+const Q_BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
+const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
+const Q_ORDER = [...QUESTIONS].sort((a, b) => fnv(a.id + 'zz') - fnv(b.id + 'zz'));   // 분류가 골고루 섞이게
+const qa = { store: null, data: { days: {}, a: {} }, view: null, editing: false, sel: null, archN: 10, ensuring: '' };
+const normQa = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? { days: v.days || {}, a: v.a || {} } : { days: {}, a: {} });
+
+async function initQna() {
+  if (!$('qaCard')) return;
+  renderQna();
+  qa.store = await openStore(await sha256hex(state.docId + ':qna'), 'couple-qna-local', $('qaStatus'), '질문');
+  qa.store.subscribe((v) => {
+    qa.data = normQa(v);
+    if ($('qaCard').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // 입력 중이면 나중에
+    renderQna();
+  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) renderQna(); });
+}
+
+function pickNextQ(d, exclude = new Set()) {
+  const used = new Set(Object.values(d.days));
+  for (const q of Q_ORDER) {
+    const a = d.a[q.id] || {};
+    if (used.has(q.id) || exclude.has(q.id) || (a.bear && a.bunny)) continue;
+    return q.id;
+  }
+  return null;   // 다 했으면 null
+}
+// 오늘 질문이 아직 안 정해졌으면 정하기 (둘이 동시에 열어도 transaction이라 하나로 정해짐)
+function ensureToday() {
+  const today = todayYmd();
+  if (qa.data.days[today] || !qa.store || qa.ensuring === today) return;
+  qa.ensuring = today;
+  qa.store.mutate((cur) => {
+    const d = normQa(cur);
+    if (!d.days[today]) { const id = pickNextQ(d); if (id) d.days = { ...d.days, [today]: id }; }
+    return d;
+  }).catch((e) => { console.error(e); qa.ensuring = ''; });
+}
+
+// '하나 더'용: 오늘 질문으로 안 쓰였고, 둘 다 아직 안 한 새 질문
+function qaNextFresh(d, cur, me) {
+  const used = new Set(Object.values(d.days));
+  return Q_ORDER.find((q) => { const a = d.a[q.id] || {}; return q.id !== cur && !used.has(q.id) && !a[me] && !a[partnerOf(me)]; }) || null;
+}
+
+function qaAnswerText(q, who, ans) {
+  if (!ans) return '';
+  if (!q.opts) return ans.t || '';
+  let label = q.opts[ans.c] ?? '';
+  if (q.who && (ans.c === 0 || ans.c === 1)) {   // 나/너 → 이름으로
+    const target = ans.c === 0 ? who : partnerOf(who);
+    label = target ? `${WHO[target].icon} ${WHO[target].name}` : label;
+  }
+  return label;
+}
+// 같은 답인지 (나/너 질문은 '누구'로 바꿔서 비교)
+function qaSame(q, a1, w1, a2, w2) {
+  if (!q.opts || !a1 || !a2) return null;
+  const abs = (a, w) => (q.who && (a.c === 0 || a.c === 1) ? (a.c === 0 ? w : partnerOf(w)) : 'o' + a.c);
+  return abs(a1, w1) === abs(a2, w2);
+}
+
+function qaAnsBox(q, who, ans, hidden) {
+  const box = document.createElement('div');
+  box.className = `qa-a ${who}` + (hidden ? ' hidden' : '');
+  const b = document.createElement('b'); b.textContent = `${WHO[who].icon} ${WHO[who].name}`;
+  box.appendChild(b);
+  if (hidden) { box.append('답했어! 🔒 내가 답하면 보여'); return box; }
+  box.append(qaAnswerText(q, who, ans));
+  if (ans && ans.n) { const m = document.createElement('span'); m.className = 'memo'; m.textContent = ` · ${ans.n}`; box.appendChild(m); }
+  return box;
+}
+
+function renderQna() {
+  const card = $('qaCard');
+  if (!card) return;
+  const d = qa.data, me = getMe(), them = partnerOf(me), today = todayYmd();
+  ensureToday();
+  const todayId = d.days[today];
+  if (qa.view && !Q_BY_ID.has(qa.view)) qa.view = null;
+  const id = qa.view || todayId;
+  const q = id && Q_BY_ID.get(id);
+  card.innerHTML = '';
+
+  // 통계 / 부제
+  const both = Object.entries(d.a).filter(([k, v]) => Q_BY_ID.has(k) && v.bear && v.bunny);
+  const choiceBoth = both.filter(([k]) => Q_BY_ID.get(k).opts);
+  const same = choiceBoth.filter(([k, v]) => qaSame(Q_BY_ID.get(k), v.bear, 'bear', v.bunny, 'bunny')).length;
+  $('qaSub').textContent = both.length
+    ? `같이 답한 질문 ${both.length}개 · 통한 답 ${same}/${choiceBoth.length} 💞`
+    : '매일 질문 하나! 둘 다 답하면 열려';
+
+  if (!q) {
+    const p = document.createElement('p'); p.className = 'qa-lock';
+    p.textContent = qa.store ? (pickNextQ(d) ? '오늘의 질문 준비 중…' : '준비된 질문을 다 했어! 🎉 새 질문을 기다려 줘') : '불러오는 중…';
+    card.appendChild(p);
+  } else {
+    const kind = id === todayId ? '오늘의 질문' : (them && d.a[id]?.[them] && !d.a[id]?.[me] ? `${WHO[them].icon}가 기다리는 질문` : '하나 더');
+    const top = document.createElement('div'); top.className = 'qa-top';
+    const chip = document.createElement('span'); chip.className = 'qa-chip'; chip.textContent = q.catLabel;
+    const k = document.createElement('span'); k.className = 'qa-kind'; k.textContent = kind;
+    top.append(chip, k);
+    if (id !== todayId && todayId) {
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'qa-link'; back.textContent = '오늘 질문으로';
+      back.style.marginLeft = 'auto';
+      back.onclick = () => { qa.view = null; qa.editing = false; qa.sel = null; renderQna(); };
+      top.appendChild(back);
+    }
+    const qq = document.createElement('p'); qq.className = 'qa-q'; qq.textContent = q.q;
+    card.append(top, qq);
+
+    if (!me) {
+      const row = document.createElement('div'); row.className = 'qa-me';
+      row.append('먼저, 나는');
+      [['bear', '🐻 곰돌찡'], ['bunny', '🐰 토끼찡']].forEach(([w, t]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+        b.onclick = () => { setMe(w); renderQna(); };
+        row.appendChild(b);
+      });
+      card.appendChild(row);
+    } else {
+      const mine = d.a[id]?.[me], theirs = d.a[id]?.[them];
+      if (!mine || qa.editing) {
+        if (theirs && !mine) { const l = document.createElement('p'); l.className = 'qa-lock'; l.textContent = `${WHO[them].icon} ${WHO[them].name}은 벌써 답했어! 내가 답하면 열려 🔒`; card.appendChild(l); }
+        card.appendChild(qaForm(q, id, me, mine));
+      } else {
+        const ans = document.createElement('div'); ans.className = 'qa-ans';
+        const order = ['bear', 'bunny'];
+        order.forEach((w) => {
+          const a = d.a[id]?.[w];
+          if (a) ans.appendChild(qaAnsBox(q, w, a, false));
+        });
+        card.appendChild(ans);
+        if (theirs) {
+          const s = qaSame(q, mine, me, theirs, them);
+          if (s !== null) { const m = document.createElement('div'); m.className = 'qa-match'; m.textContent = s ? '통했다! 💞' : '달라! 서로 알아 가는 중 🤝'; card.appendChild(m); }
+        } else {
+          const w = document.createElement('p'); w.className = 'qa-lock'; w.textContent = `${WHO[them].icon} ${WHO[them].name} 답 기다리는 중…`; card.appendChild(w);
+        }
+        const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'qa-link'; ed.textContent = '내 답 바꾸기';
+        ed.onclick = () => { qa.editing = true; qa.sel = mine.c ?? null; renderQna(); };
+        card.appendChild(ed);
+      }
+    }
+  }
+
+  // 상대가 답하고 기다리는 질문들
+  const pend = $('qaPending'); pend.innerHTML = '';
+  const waiting = me && them ? Object.entries(d.a)
+    .filter(([k, v]) => Q_BY_ID.has(k) && v[them] && !v[me] && k !== id)
+    .sort((a, b) => (b[1][them].at || 0) - (a[1][them].at || 0)) : [];
+  if (waiting.length) {
+    const t = document.createElement('p'); t.textContent = `${WHO[them].icon} ${WHO[them].name}이 답하고 기다리는 질문 ${waiting.length}개`;
+    pend.appendChild(t);
+    waiting.slice(0, 5).forEach(([k]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = `🔒 ${Q_BY_ID.get(k).q}`;
+      b.onclick = () => { qa.view = k; qa.editing = false; qa.sel = null; renderQna(); };
+      pend.appendChild(b);
+    });
+  }
+  // 하나 더: 오늘 질문(또는 보고 있는 질문)을 내가 답했을 때만
+  $('qaMore').hidden = !(me && q && d.a[id]?.[me] && !qa.editing && qaNextFresh(d, id, me));
+
+  // 점 슬라이더 알림: 상대가 답했는데 내가 아직 안 한 게 있으면 빨간 점
+  const needMe = !!(me && them && ((todayId && d.a[todayId]?.[them] && !d.a[todayId]?.[me]) || waiting.length));
+  const ni = nav.secs.findIndex((s) => s.dataset.nav === '알아가기');
+  if (ni >= 0 && nav.btns[ni]) nav.btns[ni].classList.toggle('has-new', needMe);
+
+  renderQaArchive(both);
+}
+
+function qaForm(q, id, me, mine) {
+  const wrap = document.createElement('div');
+  let input;
+  if (q.opts) {
+    if (qa.sel === null && mine) qa.sel = mine.c;
+    const opts = document.createElement('div'); opts.className = 'qa-opts'; opts.setAttribute('role', 'group');
+    q.opts.forEach((o, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = o;
+      b.setAttribute('aria-pressed', String(qa.sel === i));
+      b.onclick = () => { qa.sel = i; opts.querySelectorAll('button').forEach((x, k) => x.setAttribute('aria-pressed', String(k === i))); go.disabled = false; };
+      opts.appendChild(b);
+    });
+    wrap.appendChild(opts);
+  }
+  const form = document.createElement('form'); form.className = 'qa-form';
+  input = document.createElement('input');
+  input.maxLength = q.opts ? 40 : 60;
+  input.placeholder = q.opts ? '한마디 (안 써도 돼)' : '짧게 한 줄로';
+  input.value = mine ? (q.opts ? (mine.n || '') : (mine.t || '')) : '';
+  input.setAttribute('aria-label', q.opts ? '한마디' : '내 답');
+  const go = document.createElement('button'); go.type = 'submit'; go.className = 'btn green'; go.textContent = '답하기';
+  const ready = () => (q.opts ? qa.sel !== null : input.value.trim().length > 0);
+  go.disabled = !ready();
+  input.addEventListener('input', () => { go.disabled = !ready(); });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!ready() || !qa.store) return;
+    const v = input.value.trim();
+    const ans = q.opts ? { c: qa.sel, ...(v ? { n: v } : {}), at: Date.now() } : { t: v, at: Date.now() };
+    qa.editing = false; qa.sel = null;
+    input.blur();
+    qa.store.mutate((cur) => {
+      const d = normQa(cur);
+      d.a = { ...d.a, [id]: { ...(d.a[id] || {}), [me]: ans } };
+      return d;
+    }).catch((err) => { console.error(err); $('qaStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; });
+  });
+  form.append(input, go);
+  wrap.appendChild(form);
+  if (qa.editing) {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'qa-link'; c.textContent = '취소';
+    c.style.marginTop = '6px';
+    c.onclick = () => { qa.editing = false; qa.sel = null; renderQna(); };
+    wrap.appendChild(c);
+  }
+  return wrap;
+}
+
+function renderQaArchive(both) {
+  const list = $('qaList'); list.innerHTML = '';
+  const items = both.map(([k, v]) => ({ q: Q_BY_ID.get(k), v, at: Math.max(v.bear.at || 0, v.bunny.at || 0) }))
+    .sort((a, b) => b.at - a.at);
+  $('qaArchSum').textContent = items.length ? `지난 문답 보기 (${items.length})` : '지난 문답 보기';
+  $('qaArchive').hidden = !items.length;
+  items.slice(0, qa.archN).forEach(({ q, v }) => {
+    const li = document.createElement('li');
+    const chip = document.createElement('span'); chip.className = 'qa-chip'; chip.textContent = q.catLabel;
+    const lq = document.createElement('p'); lq.className = 'lq'; lq.textContent = q.q;
+    const ans = document.createElement('div'); ans.className = 'qa-ans';
+    ans.append(qaAnsBox(q, 'bear', v.bear, false), qaAnsBox(q, 'bunny', v.bunny, false));
+    li.append(chip, lq, ans);
+    const s = qaSame(q, v.bear, 'bear', v.bunny, 'bunny');
+    if (s !== null) { const m = document.createElement('span'); m.className = 'qa-match'; m.style.fontSize = '1rem'; m.textContent = s ? '통했다 💞' : '달라 🤝'; li.appendChild(m); }
+    list.appendChild(li);
+  });
+  $('qaListMore').hidden = items.length <= qa.archN;
+}
+
+if ($('qaMore')) {
+  $('qaMore').addEventListener('click', () => {
+    const cur = qa.view || qa.data.days[todayYmd()];
+    const next = qaNextFresh(qa.data, cur, getMe());
+    if (!next) return;
+    qa.view = next.id; qa.editing = false; qa.sel = null;
+    renderQna();
+    $('qaCard').scrollIntoView({ block: 'nearest' });
+  });
+  $('qaListMore').addEventListener('click', () => { qa.archN += 10; renderQna(); });
 }
 
 boot();
