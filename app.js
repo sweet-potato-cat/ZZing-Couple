@@ -1865,8 +1865,8 @@ async function pushPost(path, body, keepalive = false) {
 }
 
 async function renderPush() {
-  const btn = $('pushBtn'), note = $('pushNote'), test = $('pushTest');
-  test.hidden = true; btn.disabled = false; btn.dataset.on = '';
+  const btn = $('pushBtn'), note = $('pushNote');
+  btn.disabled = false; btn.dataset.on = '';
   if (isIOS && !isStandalone()) {
     btn.textContent = '🔔 알림 켜기'; btn.disabled = true;
     note.textContent = '아이폰은 홈 화면에 추가한 앱으로 열어야 알림을 켤 수 있어'; return;
@@ -1875,7 +1875,7 @@ async function renderPush() {
   if (Notification.permission === 'denied') { btn.textContent = '🔕 알림 차단됨'; btn.disabled = true; note.textContent = '휴대폰 설정에서 이 앱의 알림을 허용해 줘'; return; }
   const sub = await push.reg.pushManager.getSubscription();
   if (sub && Notification.permission === 'granted') {
-    btn.textContent = '🔔 알림 켜짐'; btn.dataset.on = '1'; test.hidden = false;
+    btn.textContent = '🔔 알림 켜짐'; btn.dataset.on = '1';
     note.textContent = '이 기기로 알림이 와 (누르면 끄기)';
   } else {
     btn.textContent = '🔔 알림 켜기';
@@ -1921,29 +1921,6 @@ async function notifyPartner(type, extra = {}) {
 
 if ($('pushBtn')) {
   $('pushBtn').addEventListener('click', togglePush);
-  // 테스트 + 진단: 서버에 등록된 기기 수와 푸시 서버 응답을 그대로 보여줌 (캡처해서 보내기 좋게)
-  $('pushTest').addEventListener('click', async () => {
-    const note = $('pushNote');
-    note.textContent = '보내는 중…';
-    const lines = [];
-    try {
-      const st = await pushPost('/status', {});
-      lines.push(`등록된 기기 🐻 ${st.devices.bear}대 · 🐰 ${st.devices.bunny}대`);
-      const j = await pushPost('/notify', { to: getMe(), type: 'test' });
-      if (!j.results || !j.results.length) lines.push('내 기기가 서버에 아직 없어 → 1분 뒤 다시, 그래도면 알림 끄고 다시 켜기');
-      (j.results || []).forEach((r) => {
-        const ok = r.status >= 200 && r.status < 300;
-        lines.push(`${r.host}: ${r.status} ${ok ? '✅ 보냄 (안 뜨면 폰 알림 설정 확인)' : `❌ ${r.reason || ''}`}`);
-      });
-    } catch (e) {
-      lines.push(e.message === 'not registered' ? '서버에 아직 등록 전이야 → 1분 뒤 다시' : `⚠️ ${e.message}`);
-    }
-    try {
-      const sub = await push.reg.pushManager.getSubscription();
-      lines.push(`이 기기: 권한 ${Notification.permission} · 구독 ${sub ? '있음' : '없음'} · ${isStandalone() ? '앱 모드' : '브라우저'}`);
-    } catch {}
-    note.textContent = lines.join('\n');
-  });
 }
 
 boot();
