@@ -26,5 +26,21 @@
   {
     "file": "check_rab.png",
     "label": "확인 부탁드립니다"
+  },
+  {
+    "file": "hello_rab.png",
+    "label": "여보세용?"
+  },
+  {
+    "file": "happy_bear.png",
+    "label": "싱나"
+  },
+  {
+    "file": "kiss_rab.png",
+    "label": "뽀뽀할래?"
+  },
+  {
+    "file": "worry_bear.png",
+    "label": "걱정"
   }
 ]

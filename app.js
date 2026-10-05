@@ -1416,6 +1416,13 @@ document.addEventListener('keydown', (e) => {
   if (!$('emoRecv').hidden) ackRecv(); else if (!$('emoPop').hidden) toggleEmoPop(false);
 });
 
+/* ====================== 스냅: 긴 섹션의 끝에도 멈출 자리 ====================== */
+document.querySelectorAll('.scene').forEach((s) => {
+  const a = document.createElement('div');
+  a.className = 'snap-end'; a.setAttribute('aria-hidden', 'true');
+  s.appendChild(a);
+});
+
 /* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
 // .scene[data-nav="이름"] 이 있는 섹션마다 점이 하나씩 자동으로 생겨 (새 섹션도 data-nav만 붙이면 됨)
 // 점 누르기 → 그 섹션으로 / 점 위를 위아래로 끌기 → 이름 보면서 빠르게 이동

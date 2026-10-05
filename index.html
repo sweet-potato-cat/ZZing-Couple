@@ -98,13 +98,14 @@
   .scroller{
     position:relative;z-index:1;height:100%;
     overflow-y:auto;overflow-x:hidden;
-    /* mandatory → proximity: 화면보다 긴 섹션(일정·레시피)에서 iOS가 섹션 시작으로 되돌려 버리는 문제 */
-    scroll-snap-type:y proximity;
+    /* 한 번 스와이프 = 한 섹션: mandatory + 섹션마다 scroll-snap-stop:always (세게 휙 넘겨도 한 칸만)
+       (proximity로 바꿨더니 짧게 넘기면 제자리로 돌아와서 다시 mandatory) */
+    scroll-snap-type:y mandatory;
     overscroll-behavior-y:none;   /* 맨 위/아래에서 튕기는 동안 다음 스와이프가 씹히는 문제 */
     -webkit-overflow-scrolling:touch;
   }
   .scene{
-    min-height:100%;scroll-snap-align:start;
+    min-height:100%;scroll-snap-align:start;scroll-snap-stop:always;
     display:flex;align-items:center;justify-content:center;
     padding:48px 18px;position:relative;
   }
@@ -528,6 +529,9 @@
     font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
   }
 
+  /* 화면보다 긴 섹션(일정·레시피)의 '맨 끝'도 멈출 자리로: 끝까지 내려가고, 다음 스와이프에 다음 섹션으로 */
+  .snap-end{position:absolute;left:0;right:0;bottom:0;height:1px;scroll-snap-align:end;pointer-events:none;visibility:hidden}
+
   /* ===== 섹션 바로 가기 (점 슬라이더) ===== */
   .dotnav{position:fixed;z-index:29;right:5px;top:50%;transform:translateY(-50%)}
   .dotnav[hidden]{display:none!important}
@@ -755,6 +759,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=nav1"></script>
+<script type="module" src="app.js?v=snap2"></script>
 </body>
 </html>
