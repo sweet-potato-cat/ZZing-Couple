@@ -8,6 +8,7 @@
 //   POST /subscribe    이 폰으로 알림 받기 등록   { c, s, who, sub }
 //   POST /unsubscribe  등록 해제                  { c, s, endpoint }
 //   POST /notify       상대에게 알림 보내기        { c, s, to, type, label?, n? }
+//   POST /status       등록된 기기 수 확인 (진단용) { c, s }
 //
 // 보안
 //   - c = 커플 ID, s = 커플 비밀값. 둘 다 사이트의 문장 비밀번호에서 만들어져서 둘만 알아.
@@ -96,7 +97,9 @@ async function sendPush(sub, message, keys) {
     },
     body,
   });
-  return res.status;
+  // 실패하면 푸시 서버가 알려 준 이유를 같이 돌려줌 (예: Apple 403 BadJwtToken)
+  const reason = res.ok ? '' : (await res.text().catch(() => '')).slice(0, 120);
+  return { status: res.status, reason };
 }
 
 // ───────── 요청 처리 ─────────
@@ -146,6 +149,11 @@ export default {
       }
       if (!rec) return json({ error: 'not registered' }, 404);
 
+      if (url.pathname === '/status') {
+        const count = (w) => rec.subs.filter((x) => x.who === w).length;
+        return json({ ok: true, devices: { bear: count('bear'), bunny: count('bunny') } });
+      }
+
       if (url.pathname === '/unsubscribe') {
         rec.subs = rec.subs.filter((x) => x.endpoint !== b.endpoint);
         await env.PUSH.put(key, JSON.stringify(rec));
@@ -164,13 +172,15 @@ export default {
         const targets = rec.subs.filter((x) => x.who === to);
         if (!targets.length) return json({ ok: true, sent: 0, note: '상대가 아직 알림을 안 켰어' });
         const keys = await vapidKeys(env);
-        const results = await Promise.all(targets.map((t) => sendPush(t, message, keys).catch(() => 0)));
-        const dead = targets.filter((t, i) => results[i] === 404 || results[i] === 410).map((t) => t.endpoint);
+        const results = await Promise.all(targets.map((t) => sendPush(t, message, keys)
+          .catch((e) => ({ status: 0, reason: String((e && e.message) || e).slice(0, 120) }))));
+        results.forEach((r, i) => { r.host = new URL(targets[i].endpoint).hostname; });
+        const dead = targets.filter((t, i) => results[i].status === 404 || results[i].status === 410).map((t) => t.endpoint);
         if (dead.length) {   // 알림 끈 기기·지운 앱 정리
           rec.subs = rec.subs.filter((x) => !dead.includes(x.endpoint));
           await env.PUSH.put(key, JSON.stringify(rec));
         }
-        return json({ ok: true, sent: results.filter((r) => r >= 200 && r < 300).length, results });
+        return json({ ok: true, sent: results.filter((r) => r.status >= 200 && r.status < 300).length, results });
       }
       return json({ error: 'not found' }, 404);
     } catch (e) {

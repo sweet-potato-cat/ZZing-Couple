@@ -1852,9 +1852,11 @@ async function initPush() {
   } catch (e) { console.warn('push sync', e.message); }
 }
 
-async function pushPost(path, body) {
+// text/plain 으로 보내면 '단순 요청'이라 CORS 사전 확인(preflight)이 없어서
+// 아이폰 사파리에서도 안정적이야 (서버는 내용만 JSON으로 읽음)
+async function pushPost(path, body, keepalive = false) {
   const r = await fetch(PUSH_URL + path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+    method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, keepalive,
     body: JSON.stringify({ c: push.c, s: push.s, ...body }),
   });
   const j = await r.json().catch(() => ({}));
@@ -1914,17 +1916,33 @@ async function togglePush() {
 async function notifyPartner(type, extra = {}) {
   const to = partnerOf(getMe());
   if (!PUSH_URL || !push.c || !to) return;
-  try { await pushPost('/notify', { to, type, ...extra }); } catch (e) { console.warn('notify', type, e.message); }
+  try { await pushPost('/notify', { to, type, ...extra }, true); } catch (e) { console.warn('notify', type, e.message); }
 }
 
 if ($('pushBtn')) {
   $('pushBtn').addEventListener('click', togglePush);
+  // 테스트 + 진단: 서버에 등록된 기기 수와 푸시 서버 응답을 그대로 보여줌 (캡처해서 보내기 좋게)
   $('pushTest').addEventListener('click', async () => {
     const note = $('pushNote');
+    note.textContent = '보내는 중…';
+    const lines = [];
     try {
+      const st = await pushPost('/status', {});
+      lines.push(`등록된 기기 🐻 ${st.devices.bear}대 · 🐰 ${st.devices.bunny}대`);
       const j = await pushPost('/notify', { to: getMe(), type: 'test' });
-      note.textContent = j.sent ? '테스트 알림 보냈어! 곧 도착할 거야 🔔' : '서버에 아직 반영 중이야. 1분 뒤 다시 눌러 봐';
-    } catch (e) { note.textContent = e.message === 'not registered' ? '서버에 아직 반영 중이야. 1분 뒤 다시 눌러 봐' : `⚠️ ${e.message}`; }
+      if (!j.results || !j.results.length) lines.push('내 기기가 서버에 아직 없어 → 1분 뒤 다시, 그래도면 알림 끄고 다시 켜기');
+      (j.results || []).forEach((r) => {
+        const ok = r.status >= 200 && r.status < 300;
+        lines.push(`${r.host}: ${r.status} ${ok ? '✅ 보냄 (안 뜨면 폰 알림 설정 확인)' : `❌ ${r.reason || ''}`}`);
+      });
+    } catch (e) {
+      lines.push(e.message === 'not registered' ? '서버에 아직 등록 전이야 → 1분 뒤 다시' : `⚠️ ${e.message}`);
+    }
+    try {
+      const sub = await push.reg.pushManager.getSubscription();
+      lines.push(`이 기기: 권한 ${Notification.permission} · 구독 ${sub ? '있음' : '없음'} · ${isStandalone() ? '앱 모드' : '브라우저'}`);
+    } catch {}
+    note.textContent = lines.join('\n');
   });
 }
 
