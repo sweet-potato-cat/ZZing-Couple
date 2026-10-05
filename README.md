@@ -57,6 +57,12 @@ python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이
 - 다 답하면 `하나 더 할래?`로 계속, 상대가 먼저 답한 질문은 "기다리는 질문"에 모임
 - 질문 추가는 `questions.js` 각 분류 맨 아래에 한 줄 (⚠️ 기존 질문 순서 바꾸거나 중간 삭제 금지)
 
+## 2-6. 🔔 푸시 알림 (Cloudflare Worker)
+- 알림 서버 코드: `cloudflare/worker.js` → Cloudflare Worker에 붙여넣기 + KV를 `PUSH` 이름으로 연결
+- Worker 주소를 `config.js`의 `PUSH_URL`에 넣으면 하트(이모티콘) 창 아래에 `🔔 알림 켜기` 버튼이 생겨
+- 아이폰은 홈 화면에 추가한 앱에서만 켤 수 있어 (기기마다 한 번씩)
+- 알림 문구는 `worker.js`의 `TEMPLATES`에서 고쳐
+
 ## 3. 로컬 테스트
 ```bash
 python3 -m http.server 8000      # → http://localhost:8000

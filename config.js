@@ -13,3 +13,7 @@ export const FIREBASE_CONFIG = {
   messagingSenderId: "543923130219",
   appId: "1:543923130219:web:a87d82082b6bfb3c36862e"
 };
+
+// 🔔 알림 서버(Cloudflare Worker) 주소. 예: "https://noti.내서브도메인.workers.dev"
+// 비워 두면 알림 기능은 안 보여.
+export const PUSH_URL = "https://noti.sweet-potato-cat.workers.dev";

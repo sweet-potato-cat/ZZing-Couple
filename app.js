@@ -83,6 +83,7 @@ function unlocked(key, docId) {
   initEmoticon();
   initDotNav();
   initQna();
+  initPush();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -626,6 +627,7 @@ async function doUpload() {
     up.busy = false;
     closeSheet();
     $('galStatus').textContent = '';
+    notifyPartner('photo', { n: total });
   } catch (e) {
     console.error(e);
     up.busy = false;
@@ -1009,7 +1011,7 @@ if ($('cal')) {
     if (!v || !cal.store) return;
     const ev = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: cal.sel, title: v, by: getMe() || '', at: Date.now() };
     input.value = '';
-    calMutate((cur) => [...(Array.isArray(cur) ? cur : []), ev]);
+    calMutate((cur) => [...(Array.isArray(cur) ? cur : []), ev]).then(() => notifyPartner('cal'));
   });
 }
 
@@ -1423,6 +1425,7 @@ async function sendEmo(file) {
   emoToast(`${WHO[to].name}한테 "${emoLabel(file)}" 보냈어!`, file);
   try {
     await emo.store.mutate((d) => { d = normEmo(d); d.msgs = [...d.msgs, m].slice(-EMO_MAX); return d; });
+    notifyPartner('emo', { label: emoLabel(file) });
   } catch (e) {
     console.error(e);
     emoToast('⚠️ 못 보냈어. 인터넷 연결을 확인해 줘.');
@@ -1772,7 +1775,7 @@ function qaForm(q, id, me, mine) {
       const d = normQa(cur);
       d.a = { ...d.a, [id]: { ...(d.a[id] || {}), [me]: ans } };
       return d;
-    }).catch((err) => { console.error(err); $('qaStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; });
+    }).then(() => { if (!mine) notifyPartner('qna'); }).catch((err) => { console.error(err); $('qaStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; });
   });
   form.append(input, go);
   wrap.appendChild(form);
@@ -1815,6 +1818,114 @@ if ($('qaMore')) {
     $('qaCard').scrollIntoView({ block: 'nearest' });
   });
   $('qaListMore').addEventListener('click', () => { qa.archN += 10; renderQna(); });
+}
+
+/* ====================== 푸시 알림 ====================== */
+// 알림 서버(Cloudflare Worker) 주소는 config.js 의 PUSH_URL. 비어 있으면 알림 기능은 숨겨져.
+// 커플 ID / 비밀값은 문장 비밀번호에서 만들어서 둘만 알아 (서버엔 비밀값의 해시만 저장됨)
+// 알림 문구는 서버에 정해져 있어서, 사진·답 내용은 서버로 안 가.
+const PUSH_URL = String(CFG.PUSH_URL || '').replace(/\/+$/, '');
+const PUSH_SYNC_KEY = 'couple-push-sync';
+const push = { c: '', s: '', reg: null };
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const b64uDec = (s) => b64.from(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4));
+
+async function initPush() {
+  if (!PUSH_URL || !$('pushRow')) return;
+  push.c = await sha256hex(state.docId + ':push-id');
+  push.s = await sha256hex(state.docId + ':push-secret');
+  $('pushRow').hidden = false;
+  if ('serviceWorker' in navigator) {
+    try { push.reg = await navigator.serviceWorker.register('sw.js'); } catch (e) { console.error(e); }
+  }
+  await renderPush();
+  // 이미 켜 둔 기기는 하루 한 번 서버에 다시 등록 ("나는 누구?" 바뀐 것 반영, 정리된 기기 복구)
+  try {
+    const sub = push.reg && push.reg.pushManager && await push.reg.pushManager.getSubscription();
+    const mark = todayYmd() + (getMe() || '');
+    if (sub && Notification.permission === 'granted' && getMe() && lsGet(PUSH_SYNC_KEY, '') !== mark) {
+      await pushPost('/subscribe', { who: getMe(), sub: sub.toJSON() });
+      lsSet(PUSH_SYNC_KEY, mark);
+    }
+  } catch (e) { console.warn('push sync', e.message); }
+}
+
+async function pushPost(path, body) {
+  const r = await fetch(PUSH_URL + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+    body: JSON.stringify({ c: push.c, s: push.s, ...body }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `서버 응답 ${r.status}`);
+  return j;
+}
+
+async function renderPush() {
+  const btn = $('pushBtn'), note = $('pushNote'), test = $('pushTest');
+  test.hidden = true; btn.disabled = false; btn.dataset.on = '';
+  if (isIOS && !isStandalone()) {
+    btn.textContent = '🔔 알림 켜기'; btn.disabled = true;
+    note.textContent = '아이폰은 홈 화면에 추가한 앱으로 열어야 알림을 켤 수 있어'; return;
+  }
+  if (!pushSupported() || !push.reg) { btn.textContent = '🔔 알림'; btn.disabled = true; note.textContent = '이 브라우저는 알림을 지원하지 않아'; return; }
+  if (Notification.permission === 'denied') { btn.textContent = '🔕 알림 차단됨'; btn.disabled = true; note.textContent = '휴대폰 설정에서 이 앱의 알림을 허용해 줘'; return; }
+  const sub = await push.reg.pushManager.getSubscription();
+  if (sub && Notification.permission === 'granted') {
+    btn.textContent = '🔔 알림 켜짐'; btn.dataset.on = '1'; test.hidden = false;
+    note.textContent = '이 기기로 알림이 와 (누르면 끄기)';
+  } else {
+    btn.textContent = '🔔 알림 켜기';
+    note.textContent = '상대가 이모티콘·질문·사진·일정을 올리면 알려 줘';
+  }
+}
+
+async function togglePush() {
+  const btn = $('pushBtn'), note = $('pushNote');
+  if (!getMe()) { note.textContent = '먼저 위에서 🐻/🐰 "나는 누구?"를 골라 줘'; return; }
+  const turningOn = !btn.dataset.on;
+  // ⚠️ 아이폰은 '버튼 누른 그 순간'에 권한을 물어봐야 해서 제일 먼저 호출
+  const perm = turningOn ? await Notification.requestPermission() : Notification.permission;
+  btn.disabled = true;
+  try {
+    let sub = await push.reg.pushManager.getSubscription();
+    if (!turningOn) {
+      if (sub) { await pushPost('/unsubscribe', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+    } else {
+      if (perm !== 'granted') { await renderPush(); return; }
+      const { key } = await (await fetch(PUSH_URL + '/vapid')).json();
+      const old = sub && sub.options && sub.options.applicationServerKey;
+      if (sub && old && b64.to(new Uint8Array(old)) !== b64.to(b64uDec(key))) { await sub.unsubscribe(); sub = null; }   // 서버 키가 바뀌었으면 다시
+      if (!sub) sub = await push.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uDec(key) });
+      await pushPost('/subscribe', { who: getMe(), sub: sub.toJSON() });
+      lsSet(PUSH_SYNC_KEY, todayYmd() + getMe());
+    }
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+    note.textContent = `⚠️ 알림 설정을 못 했어 (${e.message})`;
+    return;
+  }
+  await renderPush();
+}
+
+// 상대에게 알림 (실패해도 조용히 넘어감)
+async function notifyPartner(type, extra = {}) {
+  const to = partnerOf(getMe());
+  if (!PUSH_URL || !push.c || !to) return;
+  try { await pushPost('/notify', { to, type, ...extra }); } catch (e) { console.warn('notify', type, e.message); }
+}
+
+if ($('pushBtn')) {
+  $('pushBtn').addEventListener('click', togglePush);
+  $('pushTest').addEventListener('click', async () => {
+    const note = $('pushNote');
+    try {
+      const j = await pushPost('/notify', { to: getMe(), type: 'test' });
+      note.textContent = j.sent ? '테스트 알림 보냈어! 곧 도착할 거야 🔔' : '서버에 아직 반영 중이야. 1분 뒤 다시 눌러 봐';
+    } catch (e) { note.textContent = e.message === 'not registered' ? '서버에 아직 반영 중이야. 1분 뒤 다시 눌러 봐' : `⚠️ ${e.message}`; }
+  });
 }
 
 boot();
