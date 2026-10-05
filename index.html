@@ -373,6 +373,34 @@
   .cal-day h3{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:0 0 10px}
   .who.anniv{background:#FFD3D3;border-style:dashed}
 
+  /* ===== 갤러리: 4장 이상이면 옆으로 넘기기 ===== */
+  .grid.strip{
+    grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:clamp(128px,42%,210px);
+    overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-left:6px;
+    padding:8px 6px 12px;margin:0 -6px;overscroll-behavior-x:contain;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  }
+  .grid.strip::-webkit-scrollbar{display:none}
+  .grid.strip{align-items:start}   /* 카드끼리 높이 맞추느라 아래가 비지 않게 */
+  .grid.strip .ph{scroll-snap-align:start}
+  .grid.strip .ph span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 캡션은 한 줄 (전체는 크게 보기에서) */
+  .gal-tools{display:flex;align-items:center;gap:8px;margin:-6px 0 6px}
+  .gal-hint{font-family:var(--hand);font-size:1.12rem;color:#666;transition:opacity .3s}
+  .gal-hint.done{opacity:.3}
+  .gal-all{
+    margin-left:auto;border:2px solid var(--ink);border-radius:999px;background:var(--paper);
+    padding:1px 12px 3px;font-family:var(--hand);font-size:1.08rem;cursor:pointer;white-space:nowrap;
+  }
+  .gal-all[aria-expanded="true"]{background:var(--bear)}
+  .gal-nav{
+    display:none;width:34px;height:30px;padding:0;border:2px solid var(--ink);border-radius:10px;
+    background:var(--paper);font-family:var(--hand);font-weight:700;font-size:1.3rem;line-height:1;cursor:pointer;
+    place-items:center;box-shadow:0 2px 0 var(--ink);
+  }
+  @media (hover:hover) and (pointer:fine){ .gal-nav{display:grid} }   /* 마우스 쓰는 컴퓨터에서만 */
+  .gal-track{height:7px;border:2px solid var(--ink);border-radius:999px;background:var(--paper);overflow:hidden;margin-top:2px}
+  .gal-track i{display:block;height:100%;width:30%;background:var(--heart);border-radius:999px}
+
   /* ===== 사진 올리기 ===== */
   .up-btns{display:flex;gap:10px;flex-wrap:wrap;margin:-6px 0 16px}
   .up-btns .btn{display:inline-flex;align-items:center;gap:4px;user-select:none;-webkit-user-select:none}
@@ -625,7 +653,14 @@
       <input class="sr" type="file" id="camInput" accept="image/*" capture="environment" tabindex="-1" aria-label="사진 찍어서 올리기">
       <input class="sr" type="file" id="pickInput" accept="image/*" multiple tabindex="-1" aria-label="앨범에서 사진 올리기">
       <p class="status" id="galStatus"></p>
+      <div class="gal-tools" id="galTools" hidden>
+        <span class="gal-hint" id="galHint">옆으로 넘겨 봐 →</span>
+        <button type="button" class="gal-nav" id="galPrev" aria-label="이전 사진들">‹</button>
+        <button type="button" class="gal-nav" id="galNext" aria-label="다음 사진들">›</button>
+        <button type="button" class="gal-all" id="galAll" aria-expanded="false" aria-controls="grid">전체 보기</button>
+      </div>
       <div id="grid" class="grid"></div>
+      <div class="gal-track" id="galTrack" aria-hidden="true" hidden><i></i></div>
     </div>
   </section>
 
@@ -759,6 +794,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=snap2"></script>
+<script type="module" src="app.js?v=galstrip1"></script>
 </body>
 </html>

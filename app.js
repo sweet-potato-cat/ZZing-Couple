@@ -238,7 +238,8 @@ const sha256hex = async (str) => hex(new Uint8Array(await crypto.subtle.digest('
 const thumbIdOf = (id) => sha256hex(id + ':thumb');
 const normDate = (d) => String(d || '').replace(/-/g, '.');   // 표시·정렬용 YYYY.MM.DD
 
-const gal = { static: [], cloud: [], store: null, remote: false, urls: new Map(), io: null };
+const gal = { static: [], cloud: [], store: null, remote: false, urls: new Map(), io: null, expanded: false, lastCount: 0 };
+const GAL_STRIP_MIN = 4;
 
 async function photoDocGet(id) {
   const { fs, db } = await getDb();
@@ -298,6 +299,16 @@ function renderGallery() {
     .sort((a, b) => b.date.localeCompare(a.date) || (b.at || 0) - (a.at || 0));
   if (gal.io) gal.io.disconnect();
   grid.innerHTML = '';
+  // 4장 이상이면 한 줄로 옆으로 넘기기 (전체 보기를 누르면 원래처럼 바둑판)
+  const strip = all.length >= GAL_STRIP_MIN && !gal.expanded;
+  const grew = all.length > gal.lastCount; gal.lastCount = all.length;
+  grid.classList.toggle('strip', strip);
+  $('galTools').hidden = all.length < GAL_STRIP_MIN;
+  $('galHint').hidden = !strip; $('galPrev').hidden = !strip; $('galNext').hidden = !strip;
+  $('galTrack').hidden = !strip;
+  $('galAll').textContent = gal.expanded ? '접기' : '전체 보기';
+  $('galAll').setAttribute('aria-expanded', String(gal.expanded));
+
   if (!all.length) {
     const e = document.createElement('div');
     e.className = 'empty'; e.style.gridColumn = '1 / -1';
@@ -308,10 +319,11 @@ function renderGallery() {
   }
   $('galSub').textContent = `우리가 같이 찍은 사진 ${all.length}장`;
 
+  // 썸네일은 보일 때만 복호화: 옆으로 넘기기 모드에선 좌우 400px 미리
   gal.io = 'IntersectionObserver' in window
     ? new IntersectionObserver((es) => es.forEach((en) => {
         if (en.isIntersecting) { gal.io.unobserve(en.target); loadThumb(en.target); }
-      }), { root: $('scroller'), rootMargin: '300px' })
+      }), strip ? { root: grid, rootMargin: '0px 400px' } : { root: $('scroller'), rootMargin: '300px' })
     : null;
 
   all.forEach((p) => {
@@ -331,7 +343,31 @@ function renderGallery() {
     else if (gal.io) gal.io.observe(f);
     else loadThumb(f);
   });
+  if (strip && grew) grid.scrollLeft = 0;   // 새로 올린 사진(맨 앞)이 바로 보이게
+  requestAnimationFrame(updateGalTrack);
 }
+
+// 옆으로 넘기기: 아래 진행 막대 + 컴퓨터용 ‹ › 버튼 + 전체 보기
+function updateGalTrack() {
+  const g = $('grid'), bar = $('galTrack').firstElementChild;
+  if (!g.classList.contains('strip')) return;
+  const w = g.scrollWidth || 1;
+  bar.style.width = `${Math.min(100, (g.clientWidth / w) * 100)}%`;
+  bar.style.marginLeft = `${(g.scrollLeft / w) * 100}%`;
+  $('galHint').classList.toggle('done', g.scrollLeft > 24);
+}
+$('grid').addEventListener('scroll', () => requestAnimationFrame(updateGalTrack), { passive: true });
+window.addEventListener('resize', updateGalTrack);
+$('galPrev').addEventListener('click', () => $('grid').scrollBy({ left: -$('grid').clientWidth * 0.9, behavior: 'smooth' }));
+$('galNext').addEventListener('click', () => $('grid').scrollBy({ left: $('grid').clientWidth * 0.9, behavior: 'smooth' }));
+$('galAll').addEventListener('click', () => {
+  gal.expanded = !gal.expanded;
+  renderGallery();
+  if (!gal.expanded) {   // 접으면 갤러리 맨 위로 돌아오기
+    const sec = document.querySelector('.scene[data-nav="갤러리"]');
+    if (sec) $('scroller').scrollTo({ top: sec.offsetTop, behavior: 'smooth' });
+  }
+});
 
 async function loadThumb(fig) {
   const p = fig._item, im = fig.querySelector('img');
