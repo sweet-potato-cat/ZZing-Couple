@@ -328,6 +328,8 @@
   .set-note{margin:0 0 12px;color:#666;font-size:.9rem}
   .set-sub{font-family:var(--hand);font-size:1.15rem;color:#555;margin:2px 0 6px}
   .set-panel .toggle{margin-bottom:10px}
+  .set-bday label{min-width:5.2em}
+  .set-bday .tool[hidden]{display:none}
   .set-panel .push-row{margin-top:4px}
   .set-lock{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 4px;padding-top:12px;border-top:2px dotted #bbb}
   .set-lock .btn{font-size:1.05rem;padding:5px 12px;background:var(--paper)}
@@ -379,6 +381,7 @@
   .pill.bear{background:#FFF6EA}
   .pill.bunny{background:#FDE7EA}
   .pill.anniv{background:#FFD3D3;border-style:dashed}
+  .pill.bday{background:#FFF0B3;border-style:dashed}
   .day .more{font-size:.66rem;color:#666;padding-left:2px}
   /* 폰: 칸이 좁아서 테두리 빼고 글자 최대한 보이게 (… 대신 그냥 잘림) */
   @media (max-width:599px){
@@ -386,6 +389,7 @@
     .pill{border:none;border-radius:3px;padding:0 2px;font-size:.64rem;letter-spacing:-.03em;text-overflow:clip}
     .pill.bear{background:var(--bear)}
     .pill.anniv{background:#FFD3D3;border:none}
+    .pill.bday{background:#FFE58A;border:none}
   }
   @media (min-width:600px){
     .day{min-height:84px;padding:5px}
@@ -395,6 +399,7 @@
   .cal-day{margin-top:18px}
   .cal-day h3{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:0 0 10px}
   .who.anniv{background:#FFD3D3;border-style:dashed}
+  .who.bday{background:#FFF0B3;border-style:dashed}
 
   /* ===== 갤러리: 4장 이상이면 옆으로 넘기기 ===== */
   .grid.strip{
@@ -879,6 +884,9 @@
     <p class="set-note">여기서 바꾸면 상대 화면에도 같이 바뀌어</p>
     <div class="up-row"><label for="setStart">만난 날</label><input type="date" id="setStart"></div>
     <label class="toggle"><input type="checkbox" id="setFirstDay" checked> 만난 날을 1일로 세기</label>
+    <div class="set-sub">🎂 생일 (달력에 매년 자동으로 떠)</div>
+    <div class="up-row set-bday"><label for="bearBday">🐻 곰돌찡</label><input type="date" id="bearBday"><button class="tool" id="bearBdayX" type="button" aria-label="곰돌찡 생일 지우기" hidden>✕</button></div>
+    <div class="up-row set-bday"><label for="bunnyBday">🐰 토끼찡</label><input type="date" id="bunnyBday"><button class="tool" id="bunnyBdayX" type="button" aria-label="토끼찡 생일 지우기" hidden>✕</button></div>
     <p class="status" id="setStatus" aria-live="polite"></p>
 
     <h3 class="set-h">📱 이 기기</h3>
@@ -934,6 +942,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=set1"></script>
+<script type="module" src="app.js?v=bday1"></script>
 </body>
 </html>

@@ -196,7 +196,7 @@ async function boot() {
 }
 
 /* ====================== 설정 (오른쪽 위 ⚙️) ====================== */
-// 둘이 같이 쓰는 설정: couples/{sha256(docId + ':settings')} = 암호화된 { start, firstDay }  → 상대 화면도 같이 바뀜
+// 둘이 같이 쓰는 설정: couples/{sha256(docId + ':settings')} = 암호화된 { start, firstDay, bearBday, bunnyBday }  → 상대 화면도 같이 바뀜
 // 이 기기 설정: localStorage ("나는 누구?", 사진 올릴 때 기본값)
 // 새 설정을 넣을 땐: 같이 쓰는 거면 normSet()에 기본값 추가, 기기 것이면 prefs()에 추가
 const SET_CACHE = 'couple-settings-cache';   // 다음에 열 때 깜빡임 없이 바로 보이게
@@ -211,6 +211,10 @@ const normSet = (v) => {
   return {
     start: isYmd(o.start) ? o.start : START_DATE,   // 만난 날
     firstDay: o.firstDay !== false,                  // 만난 날 = 1일 (끄면 0일부터)
+    bday: {                                          // 생일 (양력, YYYY-MM-DD) → 달력에 매년 자동 표시
+      bear: isYmd(o.bearBday) ? o.bearBday : null,
+      bunny: isYmd(o.bunnyBday) ? o.bunnyBday : null,
+    },
   };
 };
 const sett = { store: null, data: normSet(lsRead(SET_CACHE, null)) };
@@ -218,6 +222,37 @@ const prefs = () => { const p = rawSet(lsRead(PREF_KEY, {})); return { film: p.f
 const ymdToDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 // 만난 날부터 d날짜까지 며칠째인지 (설정 따라 1일/0일부터)
 const dayNumber = (d) => Math.round((d - ymdToDate(sett.data.start)) / 86400000) + (sett.data.firstDay ? 1 : 0);
+const BDAY_WHO = [['bear', '🐻', '곰돌찡'], ['bunny', '🐰', '토끼찡']];
+const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+// 그해의 생일 날짜 (2월 29일생은 평년엔 2월 28일)
+function bdayIn(year, b) {
+  const [, m, d] = b.split('-').map(Number);
+  return new Date(year, m - 1, m === 2 && d === 29 && !isLeap(year) ? 28 : d);
+}
+// d날짜가 누구 생일인지: [{ who, icon, name, nth }]  (nth = 몇 번째 생일)
+function bdaysOn(d) {
+  const out = [];
+  for (const [who, icon, name] of BDAY_WHO) {
+    const b = sett.data.bday[who];
+    if (!b) continue;
+    const by = Number(b.slice(0, 4)), y = d.getFullYear();
+    if (y > by && bdayIn(y, b).getTime() === d.getTime()) out.push({ who, icon, name, nth: y - by });
+  }
+  return out;
+}
+// 오늘부터 가장 가까운 생일: { who, icon, name, date, dd } | null
+function nextBday(today) {
+  let best = null;
+  for (const [who, icon, name] of BDAY_WHO) {
+    const b = sett.data.bday[who];
+    if (!b) continue;
+    let date = bdayIn(today.getFullYear(), b);
+    if (date < today) date = bdayIn(today.getFullYear() + 1, b);
+    const dd = Math.round((date - today) / 86400000);
+    if (!best || dd < best.dd) best = { who, icon, name, date, dd };
+  }
+  return best;
+}
 
 /* ====================== 만난 지 며칠 ====================== */
 let ddayTimer = 0;
@@ -234,6 +269,7 @@ function renderDday() {
     let extra = '';
     if (today.getMonth() === start.getMonth() && today.getDate() === start.getDate() && years > 0) extra = ` 오늘 ${years}주년이야 🎉`;
     else if (day > 0 && day % 100 === 0) extra = ' 🎉';
+    if (bdaysOn(today).length) extra += ' 🎂';
     el.innerHTML = '';
     el.append('우리 만난 지 ');
     const b = document.createElement('b'); b.textContent = day.toLocaleString('ko-KR');
@@ -251,7 +287,8 @@ function applySettings(v) {
   lsWrite(SET_CACHE, sett.data);
   renderDday();
   if (cal.view) renderCalendar();   // 달력의 100일·주년 표시
-  if (!$('setSheet').hidden && document.activeElement !== $('setStart')) fillSettings();
+  if (!$('setSheet').hidden && !(document.activeElement && document.activeElement.matches('#setSheet input[type="date"]'))) fillSettings();
+  for (const [who] of BDAY_WHO) $(who + 'BdayX').hidden = !sett.data.bday[who];   // 입력 중이어도 ✕는 바로
 }
 async function saveSettings(patch) {
   applySettings({ ...sett.data, ...patch });   // 내 화면엔 바로
@@ -269,6 +306,11 @@ function fillSettings() {
   $('setStart').value = sett.data.start;
   $('setStart').max = localYmd();
   $('setFirstDay').checked = sett.data.firstDay;
+  for (const [who] of BDAY_WHO) {
+    const inp = $(who + 'Bday');
+    inp.value = sett.data.bday[who] || ''; inp.max = localYmd();
+    $(who + 'BdayX').hidden = !sett.data.bday[who];
+  }
   const p = prefs();
   $('prefFilm').checked = p.film; $('prefStamp').checked = p.stamp;
   renderMe();
@@ -296,6 +338,16 @@ $('setStart').addEventListener('change', () => {
   if (v !== sett.data.start) saveSettings({ start: v });
 });
 $('setFirstDay').addEventListener('change', () => saveSettings({ firstDay: $('setFirstDay').checked }));
+for (const [who] of BDAY_WHO) {
+  const inp = $(who + 'Bday'), key = who + 'Bday';
+  inp.addEventListener('change', () => {
+    const v = inp.value;
+    if (v && !isYmd(v)) return;
+    if (v > localYmd()) { $('setStatus').textContent = '⚠️ 오늘 이후 날짜는 고를 수 없어'; inp.value = sett.data.bday[who] || ''; return; }
+    if ((v || null) !== sett.data.bday[who]) saveSettings({ [key]: v || null });
+  });
+  $(who + 'BdayX').addEventListener('click', () => { inp.value = ''; saveSettings({ [key]: null }); });
+}
 ['prefFilm', 'prefStamp'].forEach((id) => $(id).addEventListener('change', () =>
   lsWrite(PREF_KEY, { film: $('prefFilm').checked, stamp: $('prefStamp').checked })));
 // "나는 누구?"가 바뀌면 그걸 쓰는 화면들 다시 그리기
@@ -921,6 +973,17 @@ const prettyDate = (str) => { const d = parseYmd(str); return `${d.getMonth() + 
 
 const cal = { store: null, events: [], view: null, sel: todayYmd(), editId: null };
 
+// 그날의 특별한 날들 (달력에 자동으로): 기념일 + 생일
+function specialsOf(str) {
+  const out = [];
+  const an = annivOf(str);
+  if (an) out.push({ pill: an, line: `우리 ${an}`, icon: '♥', cls: 'anniv' });
+  bdaysOn(parseYmd(str)).forEach((b) => out.push({
+    pill: `🎂${b.name}`, line: `${b.icon} ${b.name} ${b.nth}번째 생일 🎉`, icon: '🎂', cls: 'bday',
+  }));
+  return out;
+}
+
 // 기념일 자동 표시: 100일 단위 + N주년
 function annivOf(str) {
   const start = parseYmd(sett.data.start), d = parseYmd(str);
@@ -980,20 +1043,20 @@ function renderCalendar() {
     const ds = `${y}-${pad2(m + 1)}-${pad2(n)}`;
     const dow = (lead + n - 1) % 7;
     const evs = by[ds] || [];
-    const an = annivOf(ds);
+    const sp = specialsOf(ds);
 
     const cell = document.createElement('button');
     cell.type = 'button';
     cell.className = 'day' + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '') +
       (ds === today ? ' today' : '') + (ds === cal.sel ? ' sel' : '');
-    cell.setAttribute('aria-label', `${m + 1}월 ${n}일` + (an ? `, ${an}` : '') + (evs.length ? `, 일정 ${evs.length}개` : ''));
+    cell.setAttribute('aria-label', `${m + 1}월 ${n}일` + sp.map((x) => `, ${x.line}`).join('') + (evs.length ? `, 일정 ${evs.length}개` : ''));
     cell.setAttribute('aria-pressed', String(ds === cal.sel));
 
     const num = document.createElement('span'); num.className = 'n'; num.textContent = n;
     cell.appendChild(num);
 
     const pills = [];
-    if (an) pills.push({ text: an, cls: 'anniv' });
+    sp.forEach((x) => pills.push({ text: x.pill, cls: x.cls }));
     evs.forEach((e) => pills.push({ text: e.title, cls: e.by || '' }));
     pills.slice(0, 2).forEach((p) => {
       const t = document.createElement('span'); t.className = 'pill ' + p.cls; t.textContent = p.text;
@@ -1024,16 +1087,16 @@ function renderCalDay(by) {
   const list = $('calList');
   list.innerHTML = '';
 
-  const an = annivOf(cal.sel);
-  if (an) {
+  const sp = specialsOf(cal.sel);
+  sp.forEach((x) => {
     const li = document.createElement('li');
-    const who = document.createElement('span'); who.className = 'who anniv'; who.textContent = '♥';
-    const t = document.createElement('span'); t.className = 'txt'; t.textContent = `우리 ${an}`;
+    const who = document.createElement('span'); who.className = 'who ' + x.cls; who.textContent = x.icon;
+    const t = document.createElement('span'); t.className = 'txt'; t.textContent = x.line;
     li.append(who, t); list.appendChild(li);
-  }
+  });
 
   const evs = by[cal.sel] || [];
-  if (!evs.length && !an) {
+  if (!evs.length && !sp.length) {
     const li = document.createElement('li');
     li.textContent = '아직 일정이 없어 ✏️';
     li.style.fontFamily = 'var(--hand)'; li.style.fontSize = '1.2rem';
@@ -1083,8 +1146,13 @@ function renderCalSub() {
   const next = cal.events.filter((e) => e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.at || 0) - (b.at || 0))[0];
   const sub = $('calSub');
+  const dd = next ? Math.round((parseYmd(next.date) - parseYmd(today)) / 86400000) : Infinity;
+  const nb = nextBday(parseYmd(today));
+  if (nb && nb.dd <= dd) {   // 생일이 더 가까우면 생일 먼저
+    sub.textContent = nb.dd === 0 ? `오늘은 ${nb.icon} ${nb.name} 생일! 🎂` : `다음: ${prettyDate(ymd(nb.date))} ${nb.icon} ${nb.name} 생일 🎂 · D-${nb.dd}`;
+    return;
+  }
   if (!next) { sub.textContent = '날짜를 누르고 일정을 적어 봐'; return; }
-  const dd = Math.round((parseYmd(next.date) - parseYmd(today)) / 86400000);
   sub.textContent = `다음 일정: ${prettyDate(next.date)} ${next.title} · ${dd === 0 ? '오늘!' : `D-${dd}`}`;
 }
 
