@@ -1608,12 +1608,6 @@ function ensureToday() {
   }).catch((e) => { console.error(e); qa.ensuring = ''; });
 }
 
-// '하나 더'용: 오늘 질문으로 안 쓰였고, 둘 다 아직 안 한 새 질문
-function qaNextFresh(d, cur, me) {
-  const used = new Set(Object.values(d.days));
-  return Q_ORDER.find((q) => { const a = d.a[q.id] || {}; return q.id !== cur && !used.has(q.id) && !a[me] && !a[partnerOf(me)]; }) || null;
-}
-
 function qaAnswerText(q, who, ans) {
   if (!ans) return '';
   if (!q.opts) return ans.t || '';
@@ -1666,7 +1660,7 @@ function renderQna() {
     p.textContent = qa.store ? (pickNextQ(d) ? '오늘의 질문 준비 중…' : '준비된 질문을 다 했어! 🎉 새 질문을 기다려 줘') : '불러오는 중…';
     card.appendChild(p);
   } else {
-    const kind = id === todayId ? '오늘의 질문' : (them && d.a[id]?.[them] && !d.a[id]?.[me] ? `${WHO[them].icon}가 기다리는 질문` : '하나 더');
+    const kind = id === todayId ? '오늘의 질문' : (them && d.a[id]?.[them] && !d.a[id]?.[me] ? `${WHO[them].icon}가 기다리는 질문` : '지난 질문');
     const top = document.createElement('div'); top.className = 'qa-top';
     const chip = document.createElement('span'); chip.className = 'qa-chip'; chip.textContent = q.catLabel;
     const k = document.createElement('span'); k.className = 'qa-kind'; k.textContent = kind;
@@ -1729,9 +1723,6 @@ function renderQna() {
       pend.appendChild(b);
     });
   }
-  // 하나 더: 오늘 질문(또는 보고 있는 질문)을 내가 답했을 때만
-  $('qaMore').hidden = !(me && q && d.a[id]?.[me] && !qa.editing && qaNextFresh(d, id, me));
-
   // 점 슬라이더 알림: 상대가 답했는데 내가 아직 안 한 게 있으면 빨간 점
   const needMe = !!(me && them && ((todayId && d.a[todayId]?.[them] && !d.a[todayId]?.[me]) || waiting.length));
   const ni = nav.secs.findIndex((s) => s.dataset.nav === '알아가기');
@@ -1808,15 +1799,7 @@ function renderQaArchive(both) {
   $('qaListMore').hidden = items.length <= qa.archN;
 }
 
-if ($('qaMore')) {
-  $('qaMore').addEventListener('click', () => {
-    const cur = qa.view || qa.data.days[todayYmd()];
-    const next = qaNextFresh(qa.data, cur, getMe());
-    if (!next) return;
-    qa.view = next.id; qa.editing = false; qa.sel = null;
-    renderQna();
-    $('qaCard').scrollIntoView({ block: 'nearest' });
-  });
+if ($('qaListMore')) {
   $('qaListMore').addEventListener('click', () => { qa.archN += 10; renderQna(); });
 }
 

@@ -639,8 +639,6 @@
     text-align:left;border:2px dashed var(--ink);border-radius:12px;background:var(--paper);cursor:pointer;
     padding:5px 10px 6px;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  .qa-actions{display:flex;justify-content:flex-end;margin-top:12px}
-  .qa-actions .btn{font-size:1.15rem;padding:6px 14px}
   .qa-archive{margin-top:14px;border-top:2px dotted #bbb;padding-top:10px}
   .qa-archive summary{cursor:pointer;font-family:var(--hand);font-weight:700;font-size:1.25rem;list-style:none}
   .qa-archive summary::-webkit-details-marker{display:none}
@@ -798,9 +796,6 @@
       <p class="status" id="qaStatus"></p>
       <div class="qa-card" id="qaCard" aria-live="polite"></div>
       <div class="qa-pending" id="qaPending"></div>
-      <div class="qa-actions">
-        <button type="button" class="btn green" id="qaMore">하나 더 할래? →</button>
-      </div>
       <details class="qa-archive" id="qaArchive">
         <summary id="qaArchSum">지난 문답 보기</summary>
         <ul class="qa-list" id="qaList"></ul>
