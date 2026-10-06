@@ -299,19 +299,40 @@
     white-space:nowrap;box-shadow:0 3px 0 var(--ink);
   }
   .dday b{color:#E8696A;font-size:1.15em}
-  .lockbtn{
-    border:2px solid var(--ink);background:var(--paper);border-radius:999px;cursor:pointer;
-    font-family:var(--hand);font-size:1rem;padding:0 10px;margin-left:6px;white-space:nowrap;
-  }
   /* 폰: footer(약 455px)가 nowrap이라 화면보다 넓어서 좌우 스크롤이 생겼음 → 두 줄로 */
   @media (max-width:600px){
     footer{
       white-space:normal;width:max-content;max-width:calc(100% - 32px);
       border-radius:18px;padding:4px 14px 7px;line-height:1.45;
     }
-    footer .lockbtn{margin:5px 3px 0}
     .scene.last{padding-bottom:120px}
   }
+
+  /* ===== ⚙️ 설정 ===== */
+  .dday{max-width:calc(100% - 132px);overflow:hidden;text-overflow:ellipsis}   /* 오른쪽 위 톱니와 안 겹치게 */
+  .gear{
+    position:fixed;z-index:29;top:calc(env(safe-area-inset-top,0px) + 10px);right:12px;
+    width:44px;height:44px;padding:0;border-radius:50%;background:var(--paper);border:var(--line);
+    box-shadow:0 3px 0 var(--ink);display:grid;place-items:center;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  .gear:active{transform:translateY(3px);box-shadow:none}
+  .gear svg{width:28px;height:28px;display:block;transition:transform .4s}
+  .gear[aria-expanded="true"] svg{transform:rotate(60deg)}
+  .gear-dot{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:#E8696A;border:2.5px solid var(--ink)}
+  .gear-dot[hidden]{display:none}
+  .set-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .set-head h2{margin:0}
+  .set-x{font-size:1.4rem;opacity:.7}
+  .set-h{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:18px 0 2px;padding-top:12px;border-top:2px dotted #bbb}
+  .set-h.first{border-top:0;padding-top:0;margin-top:6px}
+  .set-note{margin:0 0 12px;color:#666;font-size:.9rem}
+  .set-sub{font-family:var(--hand);font-size:1.15rem;color:#555;margin:2px 0 6px}
+  .set-panel .toggle{margin-bottom:10px}
+  .set-panel .push-row{margin-top:4px}
+  .set-lock{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 4px;padding-top:12px;border-top:2px dotted #bbb}
+  .set-lock .btn{font-size:1.05rem;padding:5px 12px;background:var(--paper)}
+  .set-lock .btn.warn{background:#FFE1E1}
+  .up-by{margin:0 0 10px;font-family:var(--hand);font-size:1.15rem;color:#555}
 
   /* ===== 일정 (달력) ===== */
   .cal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
@@ -765,11 +786,6 @@
       <p class="sub" id="count">0개 중 0개 완료</p>
       <div class="progress" aria-hidden="true"><i id="bar"></i></div>
       <p class="status" id="status"></p>
-      <div class="me" role="group" aria-label="나는 누구?">
-        <span>나는</span>
-        <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
-        <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
-      </div>
       <form class="add" id="addForm">
         <input id="newItem" type="text" maxlength="80" placeholder="같이 하고 싶은 것" aria-label="버킷리스트 항목">
         <button class="btn green" type="submit">추가</button>
@@ -811,7 +827,7 @@
         <button type="button" class="qa-listmore" id="qaListMore" hidden>더 보기</button>
       </details>
     </div>
-    <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_ <button class="lockbtn" id="relock" type="button">잠그기</button><button class="lockbtn" id="forget" type="button">이 기기 잊기</button></footer>
+    <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_</footer>
   </section>
 </main>
 
@@ -840,17 +856,52 @@
       <label class="toggle"><input type="checkbox" id="optStamp" checked> 📅 날짜 도장</label>
     </div>
     <div class="up-row" id="upDateRow"><label for="upDate">찍은 날</label><input type="date" id="upDate"></div>
-    <div class="me" role="group" aria-label="올리는 사람">
-      <span>올리는 건</span>
-      <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
-      <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
-    </div>
+    <p class="up-by" id="upBy"></p>
     <input class="edit-in up-cap" id="upCap" type="text" maxlength="30" placeholder="한 줄 메모 (안 써도 돼)" aria-label="한 줄 메모">
     <p class="status" id="upMsg" aria-live="polite"></p>
     <div class="row">
       <button class="btn" id="upCancel" type="button">취소</button>
       <button class="btn green" id="upGo" type="button">올리기</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ ⚙️ 설정 ============ -->
+<button class="gear" id="gearBtn" type="button" aria-label="설정" aria-haspopup="dialog" aria-controls="setSheet" aria-expanded="false">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2.6h3.4l.5 2.5 1.6.7 2.1-1.4 2.4 2.4-1.4 2.1.7 1.6 2.5.5v3.4l-2.5.5-.7 1.6 1.4 2.1-2.4 2.4-2.1-1.4-1.6.7-.5 2.5h-3.4l-.5-2.5-1.6-.7-2.1 1.4-2.4-2.4 1.4-2.1-.7-1.6-2.5-.5v-3.4l2.5-.5.7-1.6-1.4-2.1 2.4-2.4 2.1 1.4 1.6-.7z" fill="#FBEEDD" stroke="#1f1f1f" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.3" fill="#fff" stroke="#1f1f1f" stroke-width="1.6"/></svg>
+  <span class="gear-dot" id="gearDot" hidden></span>
+</button>
+<div id="setSheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle" hidden>
+  <div class="panel sheet-panel set-panel">
+    <div class="set-head"><h2 id="setTitle">설정</h2><button class="tool set-x" id="setClose" type="button" aria-label="닫기">✕</button></div>
+
+    <h3 class="set-h first">💞 우리 둘이 같이</h3>
+    <p class="set-note">여기서 바꾸면 상대 화면에도 같이 바뀌어</p>
+    <div class="up-row"><label for="setStart">만난 날</label><input type="date" id="setStart"></div>
+    <label class="toggle"><input type="checkbox" id="setFirstDay" checked> 만난 날을 1일로 세기</label>
+    <p class="status" id="setStatus" aria-live="polite"></p>
+
+    <h3 class="set-h">📱 이 기기</h3>
+    <p class="set-note">이 폰(브라우저)에만 적용돼</p>
+    <div class="me" role="group" aria-label="나는 누구?">
+      <span>나는</span>
+      <button type="button" class="bear" data-me="bear" aria-pressed="false">🐻 곰돌찡</button>
+      <button type="button" class="bunny" data-me="bunny" aria-pressed="false">🐰 토끼찡</button>
+    </div>
+    <div class="set-sub">사진 올릴 때 기본값</div>
+    <div class="up-opts">
+      <label class="toggle"><input type="checkbox" id="prefFilm" checked> 🎞️ 필름 느낌</label>
+      <label class="toggle"><input type="checkbox" id="prefStamp" checked> 📅 날짜 도장</label>
+    </div>
+    <div class="push-row" id="pushRow" hidden>
+      <button type="button" class="push-btn" id="pushBtn">🔔 알림 켜기</button>
+      <p class="push-note" id="pushNote"></p>
+    </div>
+    <div class="set-lock">
+      <button class="btn" id="relock" type="button">🔒 잠그기</button>
+      <button class="btn warn" id="forget" type="button">이 기기 잊기</button>
+    </div>
+    <div class="row"><button class="btn green" id="setDone" type="button">다 했어</button></div>
   </div>
 </div>
 
@@ -869,10 +920,6 @@
   <div class="emo-grid" id="emoGrid"></div>
   <div class="emo-dots" id="emoDots" role="group" aria-label="이모티콘 페이지" hidden></div>
   <ul class="emo-log" id="emoLog" aria-label="최근 주고받은 이모티콘"></ul>
-  <div class="push-row" id="pushRow" hidden>
-    <button type="button" class="push-btn" id="pushBtn">🔔 알림 켜기</button>
-    <p class="push-note" id="pushNote"></p>
-  </div>
 </div>
 <div class="emo-toast" id="emoToast" role="status" aria-live="polite" hidden></div>
 <div class="emo-recv" id="emoRecv" role="dialog" aria-modal="true" aria-labelledby="emoFrom" hidden>
@@ -887,6 +934,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=emo4"></script>
+<script type="module" src="app.js?v=set1"></script>
 </body>
 </html>

@@ -84,6 +84,7 @@ function unlocked(key, docId) {
   initDotNav();
   initQna();
   initPush();
+  initSettings();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -194,29 +195,115 @@ async function boot() {
   if (pinOk) afterPin();
 }
 
+/* ====================== 설정 (오른쪽 위 ⚙️) ====================== */
+// 둘이 같이 쓰는 설정: couples/{sha256(docId + ':settings')} = 암호화된 { start, firstDay }  → 상대 화면도 같이 바뀜
+// 이 기기 설정: localStorage ("나는 누구?", 사진 올릴 때 기본값)
+// 새 설정을 넣을 땐: 같이 쓰는 거면 normSet()에 기본값 추가, 기기 것이면 prefs()에 추가
+const SET_CACHE = 'couple-settings-cache';   // 다음에 열 때 깜빡임 없이 바로 보이게
+const PREF_KEY = 'couple-prefs';
+const lsRead = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } };
+const lsWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const isYmd = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00'));
+const localYmd = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const rawSet = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+const normSet = (v) => {
+  const o = rawSet(v);
+  return {
+    start: isYmd(o.start) ? o.start : START_DATE,   // 만난 날
+    firstDay: o.firstDay !== false,                  // 만난 날 = 1일 (끄면 0일부터)
+  };
+};
+const sett = { store: null, data: normSet(lsRead(SET_CACHE, null)) };
+const prefs = () => { const p = rawSet(lsRead(PREF_KEY, {})); return { film: p.film !== false, stamp: p.stamp !== false }; };
+const ymdToDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+// 만난 날부터 d날짜까지 며칠째인지 (설정 따라 1일/0일부터)
+const dayNumber = (d) => Math.round((d - ymdToDate(sett.data.start)) / 86400000) + (sett.data.firstDay ? 1 : 0);
+
 /* ====================== 만난 지 며칠 ====================== */
+let ddayTimer = 0;
 function renderDday() {
-  const [y, m, d] = START_DATE.split('-').map(Number);
-  const start = new Date(y, m - 1, d);
+  clearTimeout(ddayTimer);
+  const start = ymdToDate(sett.data.start);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = Math.round((today - start) / 86400000) + 1;   // 시작일 = 1일
-  const years = today.getFullYear() - y;
   const el = $('dday');
-  if (day < 1) { el.hidden = true; return; }
-  let extra = '';
-  if (today.getMonth() === m - 1 && today.getDate() === d && years > 0) extra = ` 오늘 ${years}주년이야 🎉`;
-  else if (day % 100 === 0) extra = ' 🎉';
-  el.innerHTML = '';
-  el.append('우리 만난 지 ');
-  const b = document.createElement('b'); b.textContent = day.toLocaleString('ko-KR');
-  el.append(b, '일!' + extra);
-  el.hidden = false;
+  if (today < start) el.hidden = true;
+  else {
+    const day = dayNumber(today);
+    const years = today.getFullYear() - start.getFullYear();
+    let extra = '';
+    if (today.getMonth() === start.getMonth() && today.getDate() === start.getDate() && years > 0) extra = ` 오늘 ${years}주년이야 🎉`;
+    else if (day > 0 && day % 100 === 0) extra = ' 🎉';
+    el.innerHTML = '';
+    el.append('우리 만난 지 ');
+    const b = document.createElement('b'); b.textContent = day.toLocaleString('ko-KR');
+    el.append(b, '일!' + extra);
+    el.hidden = false;
+  }
   // 자정이 지나면 자동으로 하루 올리기
   const next = new Date(today); next.setDate(next.getDate() + 1);
-  setTimeout(renderDday, next - now + 1000);
+  ddayTimer = setTimeout(renderDday, next - now + 1000);
 }
 renderDday();
+
+function applySettings(v) {
+  sett.data = normSet(v);
+  lsWrite(SET_CACHE, sett.data);
+  renderDday();
+  if (cal.view) renderCalendar();   // 달력의 100일·주년 표시
+  if (!$('setSheet').hidden && document.activeElement !== $('setStart')) fillSettings();
+}
+async function saveSettings(patch) {
+  applySettings({ ...sett.data, ...patch });   // 내 화면엔 바로
+  if (!sett.store) return;
+  try { await sett.store.mutate((cur) => ({ ...rawSet(cur), ...patch })); $('setStatus').textContent = '저장했어 ✓'; }
+  catch (e) { console.error(e); $('setStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; }
+}
+async function initSettings() {
+  renderMe();
+  sett.store = await openStore(await sha256hex(state.docId + ':settings'), 'couple-settings-local', $('setStatus'), '설정');
+  sett.store.subscribe((v) => applySettings(v));
+}
+
+function fillSettings() {
+  $('setStart').value = sett.data.start;
+  $('setStart').max = localYmd();
+  $('setFirstDay').checked = sett.data.firstDay;
+  const p = prefs();
+  $('prefFilm').checked = p.film; $('prefStamp').checked = p.stamp;
+  renderMe();
+}
+function openSettings() {
+  $('setStatus').textContent = '';
+  fillSettings();
+  $('setSheet').hidden = false;
+  $('gearBtn').setAttribute('aria-expanded', 'true');
+  $('setClose').focus();
+}
+function closeSettings() {
+  $('setSheet').hidden = true;
+  $('gearBtn').setAttribute('aria-expanded', 'false');
+}
+$('gearBtn').addEventListener('click', openSettings);
+$('setClose').addEventListener('click', closeSettings);
+$('setDone').addEventListener('click', closeSettings);
+$('setSheet').addEventListener('click', (e) => { if (e.target === $('setSheet')) closeSettings(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('setSheet').hidden) closeSettings(); });
+$('setStart').addEventListener('change', () => {
+  const v = $('setStart').value;
+  if (!isYmd(v)) return;
+  if (v > localYmd()) { $('setStatus').textContent = '⚠️ 오늘 이후 날짜는 고를 수 없어'; $('setStart').value = sett.data.start; return; }
+  if (v !== sett.data.start) saveSettings({ start: v });
+});
+$('setFirstDay').addEventListener('change', () => saveSettings({ firstDay: $('setFirstDay').checked }));
+['prefFilm', 'prefStamp'].forEach((id) => $(id).addEventListener('change', () =>
+  lsWrite(PREF_KEY, { film: $('prefFilm').checked, stamp: $('prefStamp').checked })));
+// "나는 누구?"가 바뀌면 그걸 쓰는 화면들 다시 그리기
+document.addEventListener('mechange', () => {
+  for (const f of [renderQna, renderRecipes]) { try { f(); } catch {} }
+  try { if (!$('emoPop').hidden) renderEmoPop(); } catch {}
+  try { renderPush().catch(() => {}); } catch {}
+});
 
 /* ====================== 하트 (섹션 3) ====================== */
 (() => {
@@ -577,7 +664,9 @@ async function openSheet(files, fromCamera, tooMany) {
   up.items = [];
   $('upPreviews').innerHTML = '';
   $('upCap').value = '';
-  renderMe();
+  const p = prefs(), me = getMe();
+  $('optFilm').checked = p.film; $('optStamp').checked = p.stamp;   // ⚙️ 설정의 기본값
+  $('upBy').textContent = me ? `올리는 건 ${WHO[me].icon} ${WHO[me].name}` : '⚙️ 설정에서 "나는 누구?"를 고르면 누가 올렸는지 같이 남아';
   sheet.hidden = false;
   go.disabled = true;
   msg.textContent = '사진 준비 중…';
@@ -713,10 +802,16 @@ let items = [];
 let editingId = null;
 
 function getMe() { try { return localStorage.getItem(ME_KEY); } catch { return null; } }
-function setMe(v) { try { localStorage.setItem(ME_KEY, v); } catch {} renderMe(); }
+function setMe(v) {
+  const changed = getMe() !== v;
+  try { localStorage.setItem(ME_KEY, v); } catch {}
+  renderMe();
+  if (changed) document.dispatchEvent(new Event('mechange'));
+}
 function renderMe() {
   const me = getMe();
   document.querySelectorAll('.me button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.me === me)));
+  if ($('gearDot')) $('gearDot').hidden = !!me;   // 아직 안 골랐으면 ⚙️에 빨간 점
 }
 document.querySelectorAll('.me button').forEach((b) => b.addEventListener('click', () => setMe(b.dataset.me)));
 
@@ -828,9 +923,9 @@ const cal = { store: null, events: [], view: null, sel: todayYmd(), editId: null
 
 // 기념일 자동 표시: 100일 단위 + N주년
 function annivOf(str) {
-  const start = parseYmd(START_DATE), d = parseYmd(str);
-  const day = Math.round((d - start) / 86400000) + 1;
-  if (day < 2) return null;
+  const start = parseYmd(sett.data.start), d = parseYmd(str);
+  if (d <= start) return null;
+  const day = dayNumber(d);
   const years = d.getFullYear() - start.getFullYear();
   if (years > 0 && d.getMonth() === start.getMonth() && d.getDate() === start.getDate()) return `${years}주년 🎉`;
   if (day % 100 === 0) return `${day}일 🎉`;
@@ -1209,7 +1304,7 @@ function noteView(it) {
     const add = document.createElement('button'); add.type = 'button'; add.className = 'rc-note add';
     add.textContent = me ? `${me === 'bear' ? '🐻' : '🐰'} 내 한 줄 후기 쓰기` : '💬 한 줄 후기 쓰기';
     add.onclick = () => {
-      if (!getMe()) { $('rcMsg').textContent = '버킷리스트의 "나는 🐻/🐰"를 먼저 골라 줘'; return; }
+      if (!getMe()) { $('rcMsg').textContent = '⚙️ 설정에서 "나는 누구?"를 먼저 골라 줘'; return; }
       openNote(it, getMe());
     };
     box.appendChild(add);
