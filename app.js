@@ -1,5 +1,6 @@
 import * as CFG from './config.js';
 import { QUESTIONS } from './questions.js?v=1';
+import { LogGame } from './games/logroll.js?v=1';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2207,6 +2208,141 @@ if ($('petBox')) {
     const p = pet.data; if (!p) return;
     const v = (prompt('새 이름 (10자까지)', p.name) || '').trim().slice(0, 10);
     if (v && v !== p.name) await petMutate((cur) => { const q = normPet(cur); return q ? { ...q, name: v } : cur; });
+  });
+}
+
+/* ====================== 🎮 놀이: 통나무 타기 ====================== */
+// 게임은 간식이 아니라 ⭐ 경험치만 줘 (게임만 돌려서 간식을 무한으로 못 모으게).
+// 경험치는 각자 하루 GAME_DAILY판까지만. 기록은 키우기 문서 games.log 에 { best: {bear, bunny}, day, plays: {bear, bunny} }
+const GAME_DAILY = 3;
+const gameExp = (m) => Math.min(10, Math.max(1, Math.round(m / 20)));   // 20m마다 ⭐1, 한 판 최대 10 (간식 1개 = ⭐10 이라 활동이 더 중요하게)
+const gm = { game: null, imgs: null, playing: false };
+
+// 키우기 화면의 강아지 SVG → 게임용 그림 2장 (웃는 얼굴 / 놀란 얼굴)
+function dogImages() {
+  const src = document.querySelector('#petPet svg');
+  const mk = (hide) => new Promise((res) => {
+    const c = src.cloneNode(true);
+    c.querySelectorAll(hide).forEach((n) => n.remove());
+    c.setAttribute('width', '200'); c.setAttribute('height', '214');
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = () => res(null);
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c));
+  });
+  return Promise.all([mk('.dg-sad'), mk('.dg-happy')]).then(([happy, scared]) => ({ happy, scared }));
+}
+
+function logRecord() {
+  const g = (pet.data && pet.data.games && pet.data.games.log) || {};
+  const best = g.best || {}, today = todayYmd();
+  const plays = g.day === today ? (g.plays || {}) : {};
+  return { best, plays };
+}
+function renderGameRec() {
+  const { best, plays } = logRecord(), me = getMe();
+  const parts = BDAY_WHO.map(([w, icon, name]) => `${icon} ${name} ${best[w] ? best[w].toFixed(1) + 'm' : '-'}`);
+  $('gameRec').textContent = `🏆 최고 기록  ${parts.join(' · ')}` +
+    (me ? `\n⭐ 오늘 경험치 받을 수 있는 판: ${Math.max(0, GAME_DAILY - (plays[me] || 0))}/${GAME_DAILY}` : '\n⚙️ 설정에서 "나는 누구?"를 고르면 기록이 남아');
+}
+function gameScreen(kind, data = {}) {   // kind: ready | over | pause
+  const box = $('gameOver');
+  box.hidden = false; box.innerHTML = '';
+  const h = document.createElement('p'); h.className = 'go-title';
+  const sub = document.createElement('p'); sub.className = 'go-sub';
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn green';
+  if (kind === 'ready') {
+    h.textContent = '준비됐어? 🪵';
+    sub.textContent = '앞으로 기울면 ◀ 뒤로, 뒤로 기울면 앞으로 ▶ 를 콕콕!';
+    btn.textContent = '시작!'; btn.onclick = startLog;
+  } else if (kind === 'pause') {
+    h.textContent = '잠깐 멈췄어 ⏸️';
+    btn.textContent = '계속하기'; btn.onclick = () => { box.hidden = true; gm.game.resume(); };
+  } else {
+    h.textContent = data.best ? `🎉 신기록! ${data.m.toFixed(1)}m` : `풍덩! ${data.m.toFixed(1)}m 💦`;
+    sub.textContent = data.exp ? `${pet.data ? pet.data.name : ''}${pet.data ? josa(pet.data.name, '이', '가') : ''} ⭐ 경험치 +${data.exp}${data.lvUp ? ` · 레벨 업! Lv.${data.lvUp} 🎉` : ''}`
+      : data.capped ? `오늘 경험치는 다 받았어 (하루 ${GAME_DAILY}판). 기록 도전은 계속 OK!` : (data.note || '');
+    if (data.partner) { const p2 = document.createElement('p'); p2.className = 'go-sub'; p2.textContent = data.partner; box.append(h, sub, p2); }
+    btn.textContent = '한 번 더!'; btn.onclick = startLog;
+  }
+  if (!box.contains(h)) box.append(h, sub);
+  box.appendChild(btn);
+  btn.focus({ preventScroll: true });
+}
+
+async function openLogGame() {
+  if (!pet.data) return;
+  $('gameSheet').hidden = false;
+  renderGameRec();
+  if (!gm.imgs) gm.imgs = await dogImages();
+  if (!gm.game) gm.game = new LogGame($('gameCanvas'), gm.imgs);
+  gm.game.resize(); gm.game.reset(); gm.game.draw();
+  gameScreen('ready');
+}
+function closeLogGame() {
+  if (gm.game) gm.game.stop();
+  gm.playing = false;
+  $('gameSheet').hidden = true;
+}
+async function startLog() {
+  $('gameOver').hidden = true;
+  gm.playing = true;
+  const m = await gm.game.start();
+  gm.playing = false;
+  if ($('gameSheet').hidden) return;
+  gameScreen('over', await finishLog(m));
+  renderGameRec();
+}
+async function finishLog(m) {
+  m = Math.round(m * 10) / 10;
+  const me = getMe(), today = todayYmd(), res = { m, exp: 0, best: false, capped: false };
+  if (!me) { res.note = '⚙️ 설정에서 "나는 누구?"를 고르면 경험치랑 기록이 남아'; return res; }
+  if (!pet.data) return res;
+  const before = petLevel(pet.data.exp).lv;
+  let expAfter = pet.data.exp || 0;
+  await petMutate((cur) => {
+    const q = normPet(cur);
+    if (!q) return cur;
+    const games = { ...(q.games || {}) }, L = games.log || {};
+    const plays = L.day === today ? { ...(L.plays || {}) } : {};
+    const best = { ...(L.best || {}) };
+    const n = plays[me] || 0;
+    res.best = m > (best[me] || 0); if (res.best) best[me] = m;
+    res.capped = n >= GAME_DAILY;
+    res.exp = res.capped ? 0 : gameExp(m);
+    if (!res.capped) plays[me] = n + 1;
+    games.log = { best, day: today, plays };
+    expAfter = (q.exp || 0) + res.exp;
+    return { ...q, exp: expAfter, games };
+  });
+  const after = petLevel(expAfter).lv;
+  if (after > before) res.lvUp = after;
+  const them = partnerOf(me), tb = logRecord().best[them];
+  if (tb && m < tb) res.partner = `${WHO[them].icon} ${WHO[them].name} 기록까지 ${(tb - m).toFixed(1)}m 남았어!`;
+  else if (tb && res.best) res.partner = `${WHO[them].icon} ${WHO[them].name} 기록(${tb.toFixed(1)}m)을 넘었어! 😎`;
+  return res;
+}
+
+if ($('gameSheet')) {
+  $('gameLogBtn').addEventListener('click', openLogGame);
+  $('gameClose').addEventListener('click', closeLogGame);
+  // 터치 반응이 늦으면 억울하니까 click 말고 pointerdown
+  const press = (dir) => (e) => { e.preventDefault(); if (gm.game) gm.game.push(dir); };
+  $('gameBack').addEventListener('pointerdown', press(-1));
+  $('gameFwd').addEventListener('pointerdown', press(+1));
+  $('gameCanvas').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (gm.game) gm.game.push(e.clientX - r.left < r.width / 2 ? -1 : +1);
+  });
+  document.addEventListener('keydown', (e) => {
+    if ($('gameSheet').hidden) return;
+    if (e.key === 'Escape') closeLogGame();
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); gm.game && gm.game.push(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); gm.game && gm.game.push(+1); }
+  });
+  // 다른 앱 갔다 오면 일시정지
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && gm.playing && gm.game && (gm.game.state === 'play' || gm.game.state === 'count')) { gm.game.pause(); gameScreen('pause'); }
   });
 }
 

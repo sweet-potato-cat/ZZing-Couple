@@ -71,6 +71,10 @@ python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이
 - 레벨: 1~4 아기 · 5~9 꼬마 · 10~ 어른 (클수록 그림이 커져)
 - 숫자 조절은 `app.js`의 `PET_EARN`, `PET_FEED_EXP`, `PET_DECAY` 등
 - 저장: 암호화돼서 Firestore `couples/{sha256(docId + ':pet')}`
+- 🎮 놀이 → 🪵 통나무 타기 (`games/logroll.js`): 앞으로 기울면 ◀ 뒤로, 뒤로 기울면 앞으로 ▶ (화면 왼쪽/오른쪽 터치, 키보드 ←/→도 OK)
+  - 시간이 갈수록 넘어가려는 힘·바람·돌풍·속도가 세져. 점수는 간 거리(m)
+  - 보상은 ⭐ 경험치만 (20m마다 +1, 한 판 최대 +10), 각자 하루 3판까지. 최고 기록은 🐻/🐰 따로 저장 → 서로 기록 깨기
+  - 난이도 조절: `games/logroll.js` 위쪽 숫자와 `update()`의 G·A 식 / 보상: `app.js`의 `GAME_DAILY`, `gameExp`
 
 ## 2-7. ⚙️ 설정 (오른쪽 위 톱니)
 - **💞 우리 둘이 같이** (암호화돼서 Firestore `couples/{sha256(docId + ':settings')}`에 저장 → 상대 화면도 같이 바뀜)
