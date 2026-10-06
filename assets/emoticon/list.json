@@ -82,5 +82,17 @@
   {
     "file": "miss_rab.png",
     "label": "보고시포"
+  },
+  {
+    "file": "hug.png",
+    "label": "꼬옥"
+  },
+  {
+    "file": "shiver_bear.png",
+    "label": "ㄷㄷㄷ"
+  },
+  {
+    "file": "burp_rab.png",
+    "label": "꺼-억"
   }
 ]
