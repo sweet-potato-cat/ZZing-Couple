@@ -74,5 +74,13 @@
   {
     "file": "best_bear.png",
     "label": "최고!"
+  },
+  {
+    "file": "mine_smell.png",
+    "label": "내꺼 냄새♥"
+  },
+  {
+    "file": "miss_rab.png",
+    "label": "보고시포"
   }
 ]
