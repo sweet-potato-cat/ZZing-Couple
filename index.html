@@ -708,24 +708,6 @@
     </div>
   </section>
 
-  <section data-nav="알아가기" class="scene" aria-label="서로 더 알아가기">
-    <div class="panel">
-      <h2>서로 더 알아가기</h2>
-      <p class="sub" id="qaSub">매일 질문 하나! 둘 다 답하면 열려</p>
-      <p class="status" id="qaStatus"></p>
-      <div class="qa-card" id="qaCard" aria-live="polite"></div>
-      <div class="qa-pending" id="qaPending"></div>
-      <div class="qa-actions">
-        <button type="button" class="btn green" id="qaMore">하나 더 할래? →</button>
-      </div>
-      <details class="qa-archive" id="qaArchive">
-        <summary id="qaArchSum">지난 문답 보기</summary>
-        <ul class="qa-list" id="qaList"></ul>
-        <button type="button" class="qa-listmore" id="qaListMore" hidden>더 보기</button>
-      </details>
-    </div>
-  </section>
-
   <section data-nav="갤러리" class="scene" aria-label="갤러리">
     <div class="panel">
       <h2>갤러리</h2>
@@ -789,7 +771,7 @@
     </div>
   </section>
 
-  <section data-nav="레시피" class="scene last" aria-label="우리들의 레시피">
+  <section data-nav="레시피" class="scene" aria-label="우리들의 레시피">
     <div class="panel">
       <h2>우리들의 레시피</h2>
       <p class="sub" id="rcSub">먹고 싶은 메뉴랑 레시피 링크를 모아 두자</p>
@@ -806,6 +788,24 @@
         <button type="button" data-f="todo" aria-pressed="false">안 먹어 본 것</button>
       </div>
       <ul class="recipes" id="rcList"></ul>
+    </div>
+  </section>
+
+  <section data-nav="알아가기" class="scene last" aria-label="서로 더 알아가기">
+    <div class="panel">
+      <h2>서로 더 알아가기</h2>
+      <p class="sub" id="qaSub">매일 질문 하나! 둘 다 답하면 열려</p>
+      <p class="status" id="qaStatus"></p>
+      <div class="qa-card" id="qaCard" aria-live="polite"></div>
+      <div class="qa-pending" id="qaPending"></div>
+      <div class="qa-actions">
+        <button type="button" class="btn green" id="qaMore">하나 더 할래? →</button>
+      </div>
+      <details class="qa-archive" id="qaArchive">
+        <summary id="qaArchSum">지난 문답 보기</summary>
+        <ul class="qa-list" id="qaList"></ul>
+        <button type="button" class="qa-listmore" id="qaListMore" hidden>더 보기</button>
+      </details>
     </div>
     <footer>곰돌찡 ♥ 토끼찡 · art by @_umeus_ <button class="lockbtn" id="relock" type="button">잠그기</button><button class="lockbtn" id="forget" type="button">이 기기 잊기</button></footer>
   </section>
