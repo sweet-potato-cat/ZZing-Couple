@@ -85,6 +85,7 @@ function unlocked(key, docId) {
   initQna();
   initPush();
   initSettings();
+  initPet();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -415,6 +416,7 @@ async function initGallery() {
   if (!isConfigured()) {
     status.textContent = '🛠️ Firebase 설정 전이라 폰에서 올리기는 아직 못 써.';
     setUploadEnabled(false);
+    petSeen('photo');
     return;
   }
   try {
@@ -427,11 +429,13 @@ async function initGallery() {
         kind: 'cloud', key: 'c:' + it.id, id: it.id, date: normDate(it.date), caption: it.cap || '', by: it.by || '', at: it.at || 0
       }));
       renderGallery();
+      petSeen('photo');
     });
   } catch (e) {
     console.error(e);
     status.textContent = '⚠️ Firebase에 연결하지 못해서 지금은 사진을 올릴 수 없어.';
     setUploadEnabled(false);
+    petSeen('photo');
   }
 }
 
@@ -887,7 +891,7 @@ async function openStore(docId, localKey, status, name) {
 async function initBucket() {
   renderMe();
   store = await openStore(state.docId, 'couple-bucket-local', $('status'), '버킷리스트');
-  store.subscribe((next) => { items = next; renderBucket(); });
+  store.subscribe((next) => { items = next; renderBucket(); petSeen('bucket'); });
 }
 
 async function mutate(fn) {
@@ -1214,6 +1218,7 @@ async function initRecipes() {
   rc.store = await openStore(await sha256hex(state.docId + ':recipes'), 'couple-recipes-local', $('rcStatus'), '레시피');
   rc.store.subscribe((next) => {
     rc.items = Array.isArray(next) ? next : [];
+    petSeen('recipe');
     // 수정 중에 상대방이 바꾼 게 들어와도 입력하던 글자가 날아가지 않게, 수정 끝나고 다시 그림
     if ((rc.editId || rc.noteId) && $('rcList').contains(document.activeElement)) return;
     renderRecipes();
@@ -1773,6 +1778,7 @@ async function initQna() {
   qa.store = await openStore(await sha256hex(state.docId + ':qna'), 'couple-qna-local', $('qaStatus'), '질문');
   qa.store.subscribe((v) => {
     qa.data = normQa(v);
+    petSeen('qa');
     if ($('qaCard').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // 입력 중이면 나중에
     renderQna();
   });
@@ -1993,6 +1999,215 @@ function renderQaArchive(both) {
 
 if ($('qaListMore')) {
   $('qaListMore').addEventListener('click', () => { qa.archN += 10; renderQna(); });
+}
+
+/* ====================== 같이 키우기 (다마고치) ====================== */
+// 우리가 같이 한 일(사진·버킷리스트·레시피·질문)이 쌓이면 🦴 간식이 생기고, 간식을 주면 경험치가 올라서 자라.
+// 간식은 따로 적립하지 않고 "지금 개수 − 데려온 날 개수"로 계산해 → 두 번 세거나, 체크했다 풀었다 해서 늘릴 수 없어.
+// 저장: couples/{sha256(docId + ':pet')} = 암호화된 { kind, name, at, base, spent, exp, full, fedAt, log }
+const PET_KINDS = {
+  dog: { label: '강아지', icon: '🐶', ready: true },
+  cat: { label: '고양이', icon: '🐱', ready: false },
+  hamster: { label: '햄스터', icon: '🐹', ready: false },
+};
+const PET_EARN = [   // [키, 설명, 1개당 간식]
+  ['photo', '📷 사진 올리기', 1],
+  ['bucket', '✅ 버킷리스트 달성', 3],
+  ['recipe', '🍳 레시피 먹어 보기 (별점 주기)', 2],
+  ['qa', '💬 오늘의 질문 답하기 (각자)', 1],
+];
+const PET_WELCOME = 3;      // 데려올 때 주는 간식
+const PET_FEED_EXP = 10;    // 간식 1개 = 경험치 10
+const PET_FEED_FULL = 25;   // 간식 1개 = 배부름 +25
+const PET_DECAY = 4;        // 배부름은 1시간에 4씩 줄어 (하루쯤 지나면 배고파)
+const PET_FULL_LIMIT = 90;  // 이만큼 배부르면 "이따 줘"
+const pet = { store: null, data: null, loaded: false, ready: new Set(), pick: 'dog', busy: false, sayT: 0, lastPts: null };
+
+const normPet = (v) => (v && typeof v === 'object' && !Array.isArray(v) && PET_KINDS[v.kind] ? v : null);
+const petAllReady = () => PET_EARN.every(([k]) => pet.ready.has(k));
+// 각 기능이 처음 불러와졌을 때 / 바뀔 때마다 불러 줘
+function petSeen(k) { pet.ready.add(k); renderPet(); }
+function petCounts() {
+  return {
+    photo: gal.cloud.length + gal.static.length,
+    bucket: (Array.isArray(items) ? items : []).filter((x) => x && x.done).length,
+    recipe: rc.items.filter((x) => x && x.stars > 0).length,
+    qa: Object.values(qa.data.a || {}).reduce((n, v) => n + (v && v.bear ? 1 : 0) + (v && v.bunny ? 1 : 0), 0),
+  };
+}
+const petPoints = (c) => PET_EARN.reduce((n, [k, , w]) => n + (Number(c && c[k]) || 0) * w, 0);
+const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(c) - petPoints(p.base) - (p.spent || 0));
+const petFull = (p, now = Date.now()) => Math.max(0, Math.min(100, (p.full || 0) - ((now - (p.fedAt || p.at || now)) / 3600000) * PET_DECAY));
+function petLevel(exp) {
+  let lv = 1, need = 30, left = exp || 0;
+  while (left >= need) { left -= need; lv++; need = 30 + (lv - 1) * 10; }
+  return { lv, cur: left, need };
+}
+const petStage = (lv) => (lv >= 10 ? '어른' : lv >= 5 ? '꼬마' : '아기');
+const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
+// 받침 있으면 a, 없으면 b (곰돌찡이 / 뭉치가)
+const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1) - 0xAC00; return c >= 0 && c <= 11171 && c % 28 ? a : b; };
+
+async function initPet() {
+  if (!$('petBox')) return;
+  renderPet();
+  pet.store = await openStore(await sha256hex(state.docId + ':pet'), 'couple-pet-local', $('petStatus'), '키우기');
+  pet.store.subscribe((v) => { pet.data = normPet(v); pet.loaded = true; renderPet(); });
+  setInterval(() => { if (!document.hidden) renderPet(); }, 60000);   // 시간이 지나 배고파지는 것 반영
+}
+async function petMutate(fn) {
+  try { await pet.store.mutate(fn); return true; }
+  catch (e) { console.error(e); $('petStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; return false; }
+}
+
+function renderPet() {
+  if (!$('petBox')) return;
+  const p = pet.data;
+  $('petAdopt').hidden = !pet.loaded || !!p;
+  $('petHome').hidden = !p;
+  if (!pet.loaded) { $('petSub').textContent = '불러오는 중…'; return; }
+  if (!p) { renderPetAdopt(); return; }
+
+  const c = petCounts(), food = petFood(p, c), full = petFull(p), L = petLevel(p.exp), kind = PET_KINDS[p.kind];
+  $('petSub').textContent = `${kind.icon} Lv.${L.lv} ${petStage(L.lv)} ${kind.label} · 같이 키운 지 ${Math.floor((Date.now() - p.at) / 86400000) + 1}일`;
+  $('petName').textContent = p.name;
+  const stage = $('petStage');
+  stage.dataset.stage = petStage(L.lv);
+  stage.classList.toggle('hungry', full < 30);
+  $('petFullBar').style.width = full + '%';
+  $('petFullTxt').textContent = full < 30 ? `${Math.round(full)}% 배고파…` : `${Math.round(full)}%`;
+  $('petExpBar').style.width = (L.cur / L.need) * 100 + '%';
+  $('petExpTxt').textContent = `${L.cur}/${L.need}`;
+  $('petFood').textContent = `${food}개`;
+  $('petFeed').classList.toggle('dim', food < 1 || full >= PET_FULL_LIMIT);
+
+  // 간식 얻는 법 (데려온 뒤로 몇 번 했는지)
+  const earn = $('petEarn'); earn.innerHTML = '';
+  PET_EARN.forEach(([k, label, w]) => {
+    const li = document.createElement('li');
+    const n = Math.max(0, (c[k] || 0) - ((p.base && p.base[k]) || 0));
+    li.textContent = `${label} → 🦴 +${w}`;
+    const s = document.createElement('span'); s.textContent = ` (${n}번)`; li.appendChild(s);
+    earn.appendChild(li);
+  });
+  // 최근 돌본 기록
+  const log = $('petLog'); log.innerHTML = '';
+  (p.log || []).slice(-3).reverse().forEach((x) => {
+    const li = document.createElement('li');
+    const who = WHO[x.who];
+    li.textContent = `${who ? `${who.icon} ${who.name}${josa(who.name, '이', '가')}` : '♥'}${x.t === 'adopt' ? ' 데려왔어 🏠' : ' 간식 줬어 🦴'} · ${ago(x.at)}`;
+    log.appendChild(li);
+  });
+
+  // 새로 간식이 생기면 알려 주기
+  const pts = petPoints(c);
+  if (petAllReady()) {
+    if (pet.lastPts !== null && pts > pet.lastPts) emoToast(`🦴 간식 +${pts - pet.lastPts}! ${p.name}한테 주러 가자`);
+    pet.lastPts = pts;
+  }
+}
+
+function renderPetAdopt() {
+  $('petSub').textContent = '우리 둘이 같이 키울 친구를 데려와 봐 🐾';
+  const box = $('petKinds'); box.innerHTML = '';
+  Object.entries(PET_KINDS).forEach(([k, v]) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'pet-kind'; b.disabled = !v.ready;
+    b.setAttribute('aria-pressed', String(pet.pick === k));
+    const big = document.createElement('span'); big.className = 'pk-icon'; big.textContent = v.icon;
+    const t = document.createElement('span'); t.textContent = v.ready ? v.label : `${v.label} (준비 중)`;
+    b.append(big, t);
+    b.onclick = () => { pet.pick = k; renderPetAdopt(); };
+    box.appendChild(b);
+  });
+  const ok = petAllReady();
+  $('petAdoptBtn').disabled = !ok;
+  $('petAdoptBtn').textContent = ok ? '데려오기' : '추억 불러오는 중…';
+}
+
+async function adoptPet() {
+  const kind = pet.pick, name = ($('petNameIn').value.trim() || '뭉치').slice(0, 10);
+  if (!PET_KINDS[kind].ready || !petAllReady() || pet.busy) return;
+  pet.busy = true;
+  const now = Date.now(), base = petCounts(), me = getMe() || '';
+  await petMutate((cur) => normPet(cur) || {
+    kind, name, at: now, base, spent: 0, exp: 0, full: 60, fedAt: now, log: [{ who: me, t: 'adopt', at: now }],
+  });
+  pet.busy = false;
+  pet.lastPts = petPoints(base);
+  setTimeout(() => petSay(`안녕! 나는 ${name}${josa(name, '이', '')}야 🐾`), 300);
+}
+
+async function feedPet() {
+  const p = pet.data;
+  if (!p || pet.busy) return;
+  if (petFood(p) < 1) { petSay('간식이 없어… 같이 추억 쌓으면 생겨! 📷'); return; }
+  if (petFull(p) >= PET_FULL_LIMIT) { petSay('배불러~ 이따 줘 😋'); petAnim('jump'); return; }
+  pet.busy = true;
+  const me = getMe() || '', now = Date.now(), before = petLevel(p.exp).lv;
+  let fed = false;
+  const saved = await petMutate((cur) => {
+    const q = normPet(cur);
+    fed = false;
+    if (!q || petFood(q) < 1 || petFull(q, now) >= PET_FULL_LIMIT) return cur;
+    fed = true;
+    return {
+      ...q, spent: (q.spent || 0) + 1, exp: (q.exp || 0) + PET_FEED_EXP,
+      full: Math.min(100, petFull(q, now) + PET_FEED_FULL), fedAt: now,
+      log: [...(q.log || []), { who: me, t: 'feed', at: now }].slice(-10),
+    };
+  });
+  pet.busy = false;
+  if (!saved || !fed) return;
+  const after = petLevel((p.exp || 0) + PET_FEED_EXP).lv;
+  petAnim('eat');
+  if (after > before) { petSay(`레벨 업! Lv.${after} 🎉`); petHearts(8); }
+  else { petSay(pickOne(['냠냠! 맛있어 🦴', '와구와구 😋', me ? `고마워 ${WHO[me].name}! 💕` : '고마워! 💕'])); petHearts(2); }
+}
+
+function patPet() {
+  const p = pet.data;
+  if (!p) return;
+  petAnim('jump'); petHearts(3);
+  const me = getMe();
+  const hungry = petFull(p) < 30;
+  petSay(hungry ? pickOne(['배고파… 🦴', '간식 없어…? 🥺', '꼬르륵…'])
+    : pickOne(['멍멍! 🐾', '헤헤 좋아 💕', '또 쓰다듬어 줘!', me ? `${WHO[me].name} 최고! ✨` : '최고! ✨', '오늘도 같이 놀자!']));
+}
+
+function petSay(text) {
+  const el = $('petSay');
+  el.textContent = text; el.hidden = false;
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  clearTimeout(pet.sayT);
+  pet.sayT = setTimeout(() => { el.hidden = true; }, 2600);
+}
+function petAnim(cls) {
+  const el = $('petPet');
+  el.classList.remove('jump', 'eat'); void el.offsetWidth; el.classList.add(cls);
+}
+function petHearts(n) {
+  const stage = $('petStage');
+  for (let i = 0; i < n; i++) {
+    const h = document.createElement('span'); h.className = 'pet-heart'; h.textContent = pickOne(['💕', '♥', '✨']);
+    h.style.left = `${40 + Math.random() * 20}%`;
+    h.style.setProperty('--dx', `${(Math.random() - 0.5) * 120}px`);
+    h.style.animationDelay = `${i * 70}ms`;
+    stage.appendChild(h);
+    setTimeout(() => h.remove(), 1400 + i * 70);
+  }
+}
+
+if ($('petBox')) {
+  $('petAdoptBtn').addEventListener('click', adoptPet);
+  $('petFeed').addEventListener('click', feedPet);
+  $('petPat').addEventListener('click', patPet);
+  $('petPet').addEventListener('click', patPet);
+  $('petRename').addEventListener('click', async () => {
+    const p = pet.data; if (!p) return;
+    const v = (prompt('새 이름 (10자까지)', p.name) || '').trim().slice(0, 10);
+    if (v && v !== p.name) await petMutate((cur) => { const q = normPet(cur); return q ? { ...q, name: v } : cur; });
+  });
 }
 
 /* ====================== 푸시 알림 ====================== */

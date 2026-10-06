@@ -308,6 +308,66 @@
     .scene.last{padding-bottom:120px}
   }
 
+  /* ===== 같이 키우기 ===== */
+  .pet-q{font-family:var(--hand);font-size:1.3rem;margin:0 0 8px}
+  .pet-kinds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+  .pet-kind{
+    border:2px solid var(--ink);border-radius:14px;background:var(--paper);cursor:pointer;padding:8px 4px 6px;
+    display:flex;flex-direction:column;align-items:center;gap:2px;font-family:var(--hand);font-size:1.05rem;color:var(--ink);
+  }
+  .pet-kind .pk-icon{font-size:2rem;line-height:1.2}
+  .pet-kind[aria-pressed="true"]{background:var(--bear);box-shadow:0 3px 0 var(--ink)}
+  .pet-kind[disabled]{opacity:.4;cursor:not-allowed}
+  #petAdoptBtn[disabled]{opacity:.6;cursor:wait}
+  .pet-stage{
+    position:relative;height:250px;border:2px solid var(--ink);border-radius:16px;overflow:hidden;margin-bottom:12px;
+    background:linear-gradient(#EAF3FC 0 70%,#DDF0D9 70%);display:flex;align-items:flex-end;justify-content:center;
+  }
+  .pet-pet{border:0;background:none;padding:0;cursor:pointer;margin-bottom:4px;transform-origin:50% 100%;transition:transform .5s;-webkit-tap-highlight-color:transparent}
+  .pet-stage[data-stage="아기"] .pet-pet{transform:scale(.74)}
+  .pet-stage[data-stage="꼬마"] .pet-pet{transform:scale(.88)}
+  .pet-pet svg{width:190px;height:auto;display:block;transform-origin:50% 100%;animation:petbob 2.6s ease-in-out infinite}
+  .pet-pet.jump svg{animation:petjump .55s ease-out}
+  .pet-pet.eat svg{animation:peteat .7s ease-in-out}
+  @keyframes petbob{50%{transform:translateY(-4px) scaleY(.985)}}
+  @keyframes petjump{35%{transform:translateY(-28px)}70%{transform:translateY(0) scaleY(.92)}}
+  @keyframes peteat{20%,60%{transform:rotate(-5deg) scaleY(.96)}40%,80%{transform:rotate(5deg)}}
+  .dg-tail{transform-box:fill-box;transform-origin:90% 30%;animation:wag .45s ease-in-out infinite alternate}
+  @keyframes wag{to{transform:rotate(16deg)}}
+  .dg-sad{display:none}
+  .pet-stage.hungry .dg-happy{display:none}
+  .pet-stage.hungry .dg-sad{display:inline}
+  .pet-stage.hungry .dg-tail{animation:none}
+  .pet-say{
+    position:absolute;z-index:2;top:12px;left:50%;transform:translateX(-50%);max-width:90%;
+    background:var(--paper);border:2px solid var(--ink);border-radius:14px;padding:2px 12px 4px;box-shadow:0 2px 0 var(--ink);
+    font-family:var(--hand);font-weight:700;font-size:1.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    animation:popin .18s ease-out;
+  }
+  .pet-say[hidden]{display:none}
+  .pet-heart{position:absolute;bottom:110px;font-size:1.3rem;color:#E8696A;pointer-events:none;opacity:0;animation:petfly 1.2s ease-out forwards}
+  @keyframes petfly{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--dx),-100px)}}
+  .pet-head{display:flex;align-items:center;gap:4px;margin-bottom:6px}
+  .pet-head b{font-family:var(--hand);font-size:1.6rem}
+  .pet-stat{display:grid;grid-template-columns:5.6em 1fr auto;align-items:center;gap:8px;font-family:var(--hand);font-size:1.12rem;margin-bottom:6px}
+  .pet-stat .progress{margin:0;height:14px}
+  .pet-stat em{font-style:normal;font-size:.95rem;color:#555;min-width:3.6em;text-align:right}
+  #petExpBar{background:#FFD84D}
+  .pet-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 10px}
+  .pet-actions .btn{font-size:1.12rem;padding:7px 8px;white-space:nowrap}
+  .pet-actions .btn small{font-size:.9rem;opacity:.75}
+  .pet-actions .btn.dim{opacity:.55}
+  .pet-earn{font-size:.95rem;margin:4px 0 6px}
+  .pet-earn summary{cursor:pointer;font-family:var(--hand);font-size:1.15rem}
+  .pet-earn ul{margin:6px 0 0;padding-left:18px;line-height:1.7}
+  .pet-earn li span{color:#777}
+  .pet-log{list-style:none;margin:6px 0 0;padding:6px 0 0;border-top:2px dotted #bbb;font-size:.9rem;color:#555}
+  .pet-log:empty{display:none}
+  .pet-games{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;font-family:var(--hand);font-size:1.1rem}
+  .pet-games button{border:2px dashed #999;border-radius:999px;background:var(--paper);color:#888;font-family:var(--hand);font-size:1rem;padding:1px 10px 3px}
+  .pet-games small{color:#888;font-size:.95rem}
+  @media (prefers-reduced-motion: reduce){ .pet-pet svg,.dg-tail,.pet-heart{animation:none!important} }
+
   /* ===== ⚙️ 설정 ===== */
   .dday{max-width:calc(100% - 132px);overflow:hidden;text-overflow:ellipsis}   /* 오른쪽 위 톱니와 안 겹치게 */
   .gear{
@@ -819,6 +879,69 @@
     </div>
   </section>
 
+  <section data-nav="키우기" class="scene" aria-label="같이 키우기">
+    <div class="panel" id="petBox">
+      <h2>같이 키우기</h2>
+      <p class="sub" id="petSub">불러오는 중…</p>
+      <p class="status" id="petStatus"></p>
+
+      <div id="petAdopt" hidden>
+        <p class="pet-q">누구를 키울까?</p>
+        <div class="pet-kinds" id="petKinds" role="group" aria-label="키울 동물"></div>
+        <div class="add">
+          <input id="petNameIn" type="text" maxlength="10" placeholder="이름 (안 쓰면 뭉치)" aria-label="이름">
+          <button class="btn green" id="petAdoptBtn" type="button" disabled>데려오기</button>
+        </div>
+      </div>
+
+      <div id="petHome" hidden>
+        <div class="pet-stage" id="petStage">
+          <div class="pet-say" id="petSay" role="status" aria-live="polite" hidden></div>
+          <button type="button" class="pet-pet" id="petPet" aria-label="쓰다듬기">
+            <svg class="dog" viewBox="0 0 200 214" aria-hidden="true">
+<defs><g id="dgTail"><circle cx="48" cy="168" r="11"/><circle cx="41" cy="158" r="8"/><circle cx="43" cy="178" r="8"/><circle cx="53" cy="181" r="7"/></g><g id="dgBody"><circle cx="100" cy="132" r="30"/><circle cx="100" cy="166" r="38"/><circle cx="70" cy="150" r="15"/><circle cx="130" cy="150" r="15"/><circle cx="66" cy="172" r="15"/><circle cx="134" cy="172" r="15"/><circle cx="80" cy="192" r="14"/><circle cx="120" cy="192" r="14"/><circle cx="100" cy="196" r="14"/></g><g id="dgEars"><circle cx="54" cy="96" r="18"/><circle cx="47" cy="115" r="16"/><circle cx="53" cy="132" r="13"/><circle cx="146" cy="96" r="18"/><circle cx="153" cy="115" r="16"/><circle cx="147" cy="132" r="13"/></g><g id="dgHead"><circle cx="100" cy="80" r="44"/><circle cx="100" cy="40" r="15"/><circle cx="122" cy="45.4" r="15"/><circle cx="138.1" cy="60" r="15"/><circle cx="144" cy="80" r="15"/><circle cx="138.1" cy="100" r="15"/><circle cx="61.9" cy="100" r="15"/><circle cx="56" cy="80" r="15"/><circle cx="61.9" cy="60" r="15"/><circle cx="78" cy="45.4" r="15"/></g><g id="dgPaws"><circle cx="85" cy="198" r="11"/><circle cx="115" cy="198" r="11"/></g></defs>
+<ellipse cx="100" cy="208" rx="52" ry="6" fill="#000" opacity=".08"/>
+<g class="dg-tail"><use href="#dgTail" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgTail" fill="#E6B886"/></g>
+<use href="#dgBody" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBody" fill="#E6B886"/>
+<use href="#dgPaws" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgPaws" fill="#E6B886"/>
+<path d="M85 203v-6M115 203v-6" stroke="#1f1f1f" stroke-width="2.5" stroke-linecap="round"/>
+<g class="dg-ears"><use href="#dgEars" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgEars" fill="#D9A673"/></g>
+<use href="#dgHead" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgHead" fill="#E6B886"/>
+<path d="M70 121 Q100 140 130 121" fill="none" stroke="#1f1f1f" stroke-width="11" stroke-linecap="round"/>
+<path d="M70 121 Q100 140 130 121" fill="none" stroke="#FF8E8F" stroke-width="5.5" stroke-linecap="round"/>
+<path d="M100 150 C91 144 89 140 89 137 C89 133 92 131 95 131 C97 131 99 132 100 134 C101 132 103 131 105 131 C108 131 111 133 111 137 C111 140 109 144 100 150Z" fill="#FFD84D" stroke="#1f1f1f" stroke-width="2.5" stroke-linejoin="round"/>
+<ellipse cx="100" cy="104" rx="22" ry="16" fill="#F6DDBD"/>
+<ellipse cx="68" cy="104" rx="10" ry="7" fill="#F5A3A3" opacity=".9"/>
+<ellipse cx="132" cy="104" rx="10" ry="7" fill="#F5A3A3" opacity=".9"/>
+<g class="dg-happy">
+  <ellipse cx="83" cy="90" rx="4.6" ry="5.6" fill="#1f1f1f"/><circle cx="84.6" cy="88" r="1.5" fill="#fff"/>
+  <ellipse cx="117" cy="90" rx="4.6" ry="5.6" fill="#1f1f1f"/><circle cx="118.6" cy="88" r="1.5" fill="#fff"/>
+  <path d="M90 105 Q100 125 110 105 Q100 109 90 105Z" fill="#F27D8C" stroke="#1f1f1f" stroke-width="2.5" stroke-linejoin="round"/>
+</g>
+<g class="dg-sad">
+  <path d="M78 92 l10 -3 M122 92 l-10 -3" fill="none" stroke="#1f1f1f" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M93 110 q3.5 -3 7 0 q3.5 3 7 0" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M136 72 q5 7 0 10 q-5 -3 0 -10z" fill="#9CCBF0" stroke="#1f1f1f" stroke-width="1.8"/>
+</g>
+<ellipse cx="100" cy="99" rx="6.5" ry="4.8" fill="#1f1f1f"/>
+<path d="M100 103.5v3" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
+          </button>
+        </div>
+        <div class="pet-head"><b id="petName"></b><button class="tool" id="petRename" type="button" aria-label="이름 바꾸기">✎</button></div>
+        <div class="pet-stat"><span>🍖 배부름</span><div class="progress" aria-hidden="true"><i id="petFullBar"></i></div><em id="petFullTxt"></em></div>
+        <div class="pet-stat"><span>⭐ 경험치</span><div class="progress" aria-hidden="true"><i id="petExpBar"></i></div><em id="petExpTxt"></em></div>
+        <div class="pet-actions">
+          <button class="btn green" id="petFeed" type="button">🦴 간식 주기 <small id="petFood"></small></button>
+          <button class="btn" id="petPat" type="button">🤚 쓰다듬기</button>
+        </div>
+        <details class="pet-earn"><summary>🦴 간식은 어떻게 생겨?</summary><ul id="petEarn"></ul></details>
+        <ul class="pet-log" id="petLog" aria-label="최근 돌본 기록"></ul>
+        <div class="pet-games"><span>🎮 놀이</span><button type="button" disabled>🪵 통나무 타기</button><button type="button" disabled>⚾ 공 받기</button><small>곧 나와!</small></div>
+      </div>
+    </div>
+  </section>
+
   <section data-nav="알아가기" class="scene last" aria-label="서로 더 알아가기">
     <div class="panel">
       <h2>서로 더 알아가기</h2>
@@ -942,6 +1065,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=bday1"></script>
+<script type="module" src="app.js?v=pet1"></script>
 </body>
 </html>
