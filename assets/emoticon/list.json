@@ -42,5 +42,37 @@
   {
     "file": "worry_bear.png",
     "label": "걱정"
+  },
+  {
+    "file": "fart_rab.png",
+    "label": "대답할 때까지 방구"
+  },
+  {
+    "file": "baby_rab.png",
+    "label": "응애에요"
+  },
+  {
+    "file": "goodnight.png",
+    "label": "굿밤"
+  },
+  {
+    "file": "love_bear.png",
+    "label": "사랑해"
+  },
+  {
+    "file": "hehe_rab.png",
+    "label": "히히"
+  },
+  {
+    "file": "clap_rab.png",
+    "label": "박수"
+  },
+  {
+    "file": "letsgo.png",
+    "label": "가즈앙"
+  },
+  {
+    "file": "best_bear.png",
+    "label": "최고!"
   }
 ]

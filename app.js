@@ -1275,6 +1275,7 @@ if ($('rcForm')) {
 // 상대가 페이지를 열어 두고 있으면 바로, 아니면 다음에 열 때 뜸 (푸시 알림은 서버가 필요해서 아직 X)
 // 저장: couples/{sha256(docId + ':emoticon')} = 암호화된 { msgs: [...최근 40개], seen: { bear, bunny } }
 const EMO_DIR = 'assets/emoticon/';
+const EMO_PER_PAGE = 12;   // 이모티콘 창 한 장에 4×3
 const EMO_MAX = 40;                       // 최근 40개만 보관
 const EMO_FRESH_MS = 3 * 86400000;        // 3일 넘은 건 받아도 안 띄움
 const EMO_SEEN_KEY = 'couple-emo-seen', EMO_SENT_KEY = 'couple-emo-sent';
@@ -1369,15 +1370,34 @@ function renderEmoPop() {
   $('emoTo').textContent = to ? `${WHO[to].icon} ${WHO[to].name}한테 보내기` : '이모티콘 보내기';
   $('emoMe').hidden = !!me;
   const grid = $('emoGrid');
+  const keepX = grid.scrollLeft;   // 열려 있는 동안 다시 그려도 보던 페이지 그대로
   grid.innerHTML = '';
-  emo.list.forEach((x) => {
+  // 12개(4×3) 넘으면 페이지로 나눠서 옆으로 넘기기
+  const paged = emo.list.length > EMO_PER_PAGE;
+  grid.classList.toggle('paged', paged);
+  let page = grid;
+  emo.list.forEach((x, i) => {
+    if (paged && i % EMO_PER_PAGE === 0) { page = document.createElement('div'); page.className = 'emo-page'; grid.appendChild(page); }
     const b = document.createElement('button');
     b.type = 'button'; b.disabled = !me; b.title = x.label;
     b.setAttribute('aria-label', `${x.label} 보내기`);
     b.appendChild(emoImg(x.file));
     b.addEventListener('click', () => sendEmo(x.file));
-    grid.appendChild(b);
+    page.appendChild(b);
   });
+  const dots = $('emoDots'); dots.innerHTML = '';
+  dots.hidden = !paged;
+  if (paged) {
+    const n = Math.ceil(emo.list.length / EMO_PER_PAGE);
+    for (let p = 0; p < n; p++) {
+      const d = document.createElement('button'); d.type = 'button';
+      d.setAttribute('aria-label', `${p + 1}번째 페이지`);
+      d.addEventListener('click', () => grid.scrollTo({ left: p * grid.clientWidth, behavior: 'smooth' }));
+      dots.appendChild(d);
+    }
+    grid.scrollLeft = keepX;
+    emoSyncDots();
+  }
   // 최근 주고받은 것 (최신 6개)
   const log = $('emoLog'); log.innerHTML = '';
   emo.data.msgs.slice(-6).reverse().forEach((m) => {
@@ -1395,11 +1415,20 @@ function renderEmoPop() {
   });
 }
 
+// 지금 보는 페이지 점 표시
+function emoSyncDots() {
+  const grid = $('emoGrid'), w = grid.clientWidth;
+  const cur = w ? Math.round(grid.scrollLeft / w) : 0;
+  [...$('emoDots').children].forEach((d, i) => d.setAttribute('aria-current', String(i === cur)));
+}
+if ($('emoGrid')) $('emoGrid').addEventListener('scroll', () => requestAnimationFrame(emoSyncDots), { passive: true });
+
 function toggleEmoPop(open) {
   const pop = $('emoPop');
   open = open ?? pop.hidden;
   if (open) { renderEmoPop(); $('emoToast').hidden = true; }
   pop.hidden = !open;
+  if (open) emoSyncDots();   // 보이고 나서야 폭을 알 수 있어
   $('emoFab').setAttribute('aria-expanded', String(open));
 }
 
