@@ -1,7 +1,7 @@
 import * as CFG from './config.js';
 import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
-import { BallGame } from './games/ballcatch.js?v=1';
+import { BallGame } from './games/ballcatch.js?v=2';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2568,7 +2568,7 @@ const GAMES = {
   },
   ball: {
     title: '⚾ 공 받기', Cls: BallGame, ctrl: 'gameCtrlBall',
-    help: '줄어드는 동그라미가 점선에 딱 겹칠 때 콕! ♥ 3개 다 잃으면 끝',
+    help: '줄어드는 동그라미가 점선에 딱 겹칠 때 콕! 5개 잡으면 자리가 바뀌고 10개면 움직여. ♥ 3개 다 잃으면 끝',
     round: (v) => Math.round(v), fmt: (v) => `${v}점`,
     exp: (s) => Math.min(10, Math.max(1, Math.round(s / 25))),   // 25점마다 ⭐1, 최대 10
     fail: '끝! 🐾',

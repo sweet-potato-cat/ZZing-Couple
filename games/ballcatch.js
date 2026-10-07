@@ -2,6 +2,7 @@
 //   줄어드는 동그라미가 가운데 동그라미랑 딱 겹칠 때 누르면 Perfect, 조금 빗나가면 Good.
 //   놓치면 ♥ 하나 잃고, ♥ 3개를 다 잃으면 끝. 연속으로 잡으면 콤보 보너스.
 //   점점 빨리, 자주 날아오고 높게(포물선)·빠르게(직선)·한 번 튀기는 공이 섞여.
+//   잡는 곳(점선 동그라미)도 바뀌어: 5개 잡으면 공마다 다른 자리로 📍, 10개 잡으면 계속 움직여 🌀 (강아지가 따라가)
 // 쓰는 법: const g = new BallGame(canvas, { happy, scared }, { thrower: '🐰' });  const score = await g.start();  g.tap()
 
 // 판정 구간(초): 처음엔 넉넉하다가 공이 많아질수록 좁아져
@@ -10,6 +11,8 @@ const goodOf = (n) => Math.max(0.105, 0.16 - n * 0.0016);
 const HAND = '"Gaegu","Gowun Dodum",sans-serif';
 const rand = (a, b) => a + Math.random() * (b - a);
 const lerp = (a, b, u) => a + (b - a) * u;
+const ease = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+const MOVE_AT = 5, DRIFT_AT = 10;   // 몇 개 잡으면 자리 바꾸기 / 움직이기
 
 export class BallGame {
   constructor(canvas, imgs, opts = {}) {
@@ -31,6 +34,7 @@ export class BallGame {
     this.t = 0; this.score = 0; this.combo = 0; this.maxCombo = 0; this.lives = 3;
     this.balls = []; this.nextThrow = 0.9; this.thrown = 0; this.fx = [];
     this.jumpT = -1; this.holdT = 0; this.sadT = 0; this.endT = 0; this.count = 0; this.throwSide = 1; this.throwT = 0;
+    this.catches = 0; this.moves = []; this.driftT0 = null; this.jumpTo = 0; this.home = null;
   }
   resize() {
     const r = this.c.getBoundingClientRect();
@@ -43,9 +47,31 @@ export class BallGame {
   // 화면 배치 (크기 바뀌어도 맞게)
   get groundY() { return this.H * 0.8; }
   get dogH() { return Math.min(this.H * 0.3, 150); }
-  get jumpH() { return this.dogH * 0.42; }
-  // 강아지 입이 점프 꼭대기에 있을 때 위치 = 공 잡는 곳
-  get catchP() { return { x: this.W / 2, y: this.groundY - this.dogH * 0.49 - this.jumpH }; }
+  get mouthY() { return this.groundY - this.dogH * 0.49; }   // 서 있을 때 입 높이
+  // 잡는 곳: 처음엔 가운데 위쪽(입보다 강아지 키 0.8배 위). 자리 바꾸기·움직이기는 시간에 따라 정해져서
+  // 공이 날아오는 동안에도 '도착할 때 그 자리'로 정확히 날아가
+  zoneAt(t) {
+    let { x, y } = this.home || { x: this.W / 2, y: this.mouthY - this.dogH * 0.8 };
+    for (const m of this.moves) {
+      if (t >= m.t1) { x = m.x; y = m.y; continue; }
+      if (t > m.t0) { const u = ease((t - m.t0) / (m.t1 - m.t0)); x = lerp(x, m.x, u); y = lerp(y, m.y, u); }
+      break;
+    }
+    if (this.driftT0 !== null && t > this.driftT0) {   // 🌀 계속 움직이기 (조금씩 크게, 빠르게)
+      const d = t - this.driftT0, amp = Math.min(this.W * 0.2, d * this.W * 0.025);
+      const w = Math.min(2.2, 1 + d * 0.02);
+      x += amp * Math.sin(d * w);
+      y += amp * 0.22 * Math.sin(d * w * 1.7 + 1);
+    }
+    return { x: Math.max(this.W * 0.14, Math.min(this.W * 0.86, x)), y: Math.max(this.H * 0.16, y) };
+  }
+  get catchP() { return this.zoneAt(this.t); }
+  // 다음 공을 받을 새 자리 (지금 자리랑 좀 떨어진 곳)
+  newSpot(from) {
+    let x;
+    do { x = this.W * rand(0.26, 0.74); } while (Math.abs(x - from.x) < this.W * 0.18);
+    return { x, y: this.mouthY - this.dogH * rand(0.55, 1.25) };
+  }
 
   start() {
     cancelAnimationFrame(this.raf);
@@ -61,7 +87,10 @@ export class BallGame {
   // 콕!
   tap() {
     if (this.state !== 'play') return;
-    if (this.jumpT < 0 || this.jumpT > 0.32) this.jumpT = 0;   // 점프 (공 잡는 중이 아니면 다시)
+    if (this.jumpT < 0 || this.jumpT > 0.32) {   // 점프 (공 잡는 중이 아니면 다시) — 지금 잡는 곳 높이까지
+      this.jumpT = 0;
+      this.jumpTo = Math.max(this.dogH * 0.3, this.mouthY - this.catchP.y);
+    }
     // 가장 가까운 공 판정
     let best = null, bd = Infinity;
     for (const b of this.balls) if (!b.judged) { const d = Math.abs(this.t - b.arrive); if (d < bd) { bd = d; best = b; } }
@@ -73,6 +102,9 @@ export class BallGame {
       const pts = (perfect ? 3 : 1) * Math.min(3, 1 + Math.floor(this.combo / 10));   // 10콤보마다 x2, 20콤보부터 x3
       this.score += pts;
       this.holdT = 0.4;
+      this.catches++;
+      if (this.catches === MOVE_AT) this.fxText('📍 이제 자리가 바뀌어!', this.W / 2, this.H * 0.22, '#4A90C8', 1.25);
+      if (this.catches === DRIFT_AT) { this.fxText('🌀 이제 움직여!', this.W / 2, this.H * 0.22, '#4A90C8', 1.25); this.driftT0 = this.t + 0.6; }
       this.fxText(perfect ? `Perfect! +${pts}` : `Good +${pts}`, p.x, p.y - 40, perfect ? '#E8696A' : '#1f1f1f');
       if (this.combo > 1 && this.combo % 5 === 0) this.fxText(`${this.combo} 콤보! 🔥`, this.W / 2, this.H * 0.3, '#E8696A', 1.4);
     } else {
@@ -88,12 +120,18 @@ export class BallGame {
     const side = Math.random() < 0.5 ? -1 : 1;
     const r = Math.random();
     const kind = n < 4 ? 'lob' : r < 0.45 ? 'lob' : r < 0.75 ? 'line' : 'bounce';
-    const p = this.catchP;
+    const arrive = this.t + flight;
+    // 📍 5개 잡은 뒤로는 공마다 새 자리 (앞 공이 도착한 다음 0.35초 동안 미끄러지듯 이동, 이 공 도착 0.25초 전엔 멈춰 있게)
+    if (this.catches >= MOVE_AT && (this.driftT0 === null || n % 2 === 0)) {
+      const prev = this.balls.reduce((m, x) => Math.max(m, x.arrive), this.t);
+      const t0 = Math.max(this.t, prev + 0.05), t1 = t0 + 0.35;
+      if (t1 <= arrive - 0.25) this.moves.push({ t0, t1, ...this.newSpot(this.zoneAt(t0)) });
+    }
+    const p = this.zoneAt(arrive);
     const b = {
       n, good: goodOf(n), perfect: perfectOf(n),
-      kind, side, flight, t0: this.t, arrive: this.t + flight,
+      kind, side, flight, t0: this.t, arrive,
       sx: side < 0 ? -16 : this.W + 16, sy: this.groundY - this.H * rand(0.12, 0.3),
-      ex: p.x, ey: p.y,
       h: kind === 'lob' ? this.H * rand(0.25, 0.42) : kind === 'line' ? this.H * rand(0.02, 0.07) : this.H * 0.16,
       gx: lerp(side < 0 ? 0 : this.W, p.x, 0.55), spin: rand(4, 9) * side,
     };
@@ -107,6 +145,8 @@ export class BallGame {
   }
   ballPos(b, t) {
     const u = (t - b.t0) / b.flight;
+    const e = this.zoneAt(b.arrive);   // 도착할 때의 잡는 곳 (움직이기 시작하면 날아가는 중에도 살짝 따라가)
+    b.ex = e.x; b.ey = e.y;
     if (u <= 1) {
       if (b.kind === 'bounce') {
         if (u < 0.55) { const v = u / 0.55; return { x: lerp(b.sx, b.gx, v), y: lerp(b.sy, this.groundY - 8, v) - b.h * 4 * v * (1 - v) }; }
@@ -155,9 +195,10 @@ export class BallGame {
   dogOffset() {   // 점프 높이: 빨리 올라가고(0.1초), 잠깐 머물고, 내려와
     const t = this.jumpT;
     if (t < 0) return { y: 0, sq: 1 };
-    if (t < 0.1) return { y: this.jumpH * (t / 0.1), sq: 1.06 };
-    if (t < 0.3) return { y: this.jumpH, sq: 1 };
-    if (t < 0.5) { const v = (t - 0.3) / 0.2; return { y: this.jumpH * (1 - v * v), sq: 1 }; }
+    const J = this.jumpTo;
+    if (t < 0.1) return { y: J * (t / 0.1), sq: 1.06 };
+    if (t < 0.3) return { y: J, sq: 1 };
+    if (t < 0.5) { const v = (t - 0.3) / 0.2; return { y: J * (1 - v * v), sq: 1 }; }
     return { y: 0, sq: 0.92 };   // 착지 찌그러짐
   }
 
@@ -201,9 +242,10 @@ export class BallGame {
     const off = this.dogOffset(), dh = this.dogH, dw = dh * 200 / 214;
     const img = (this.sadT > 0 || this.state === 'end' ? this.imgs.scared : this.imgs.happy) || this.imgs.happy;
     x.fillStyle = 'rgba(0,0,0,.08)';
-    x.beginPath(); x.ellipse(W / 2, gy + 2, dw * 0.42 * (1 - off.y / (this.jumpH * 3)), 6, 0, 0, 7); x.fill();
+    const dx = this.zoneAt(this.t).x;   // 강아지는 잡는 곳 바로 밑으로 따라가
+    x.beginPath(); x.ellipse(dx, gy + 2, dw * 0.42 * Math.max(0.4, 1 - off.y / (dh * 3)), 6, 0, 0, 7); x.fill();
     x.save();
-    x.translate(W / 2, gy - off.y);
+    x.translate(dx, gy - off.y);
     x.scale(2 - off.sq, off.sq);
     if (img) x.drawImage(img, -dw / 2, -dh, dw, dh);
     x.restore();
@@ -211,7 +253,7 @@ export class BallGame {
     // 공
     for (const b of this.balls) {
       let q = this.ballPos(b, Math.min(this.t, b.caught ? b.arrive : this.t));
-      if (b.caught) q = { x: W / 2, y: gy - off.y - dh * 0.49 };   // 입에 물고 있기
+      if (b.caught) q = { x: dx, y: gy - off.y - dh * 0.49 };   // 입에 물고 있기
       this.drawBall(q.x, q.y, Math.max(10, dh * 0.085), b.caught ? 0 : (this.t - b.t0) * b.spin);
     }
 
