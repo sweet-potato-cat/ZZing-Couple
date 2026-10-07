@@ -28,6 +28,9 @@ const TEMPLATES = {
   qna: (from) => `${WHO[from]}이 오늘의 질문에 답했어! 🔒`,
   photo: (from, x) => `${WHO[from]}이 사진${x.n > 1 ? ` ${x.n}장을` : '을'} 올렸어 📸`,
   cal: (from) => `${WHO[from]}이 일정을 추가했어 📅`,
+  praise: (from) => `${WHO[from]}이 칭찬 포도를 달아 줬어 💜`,
+  ripe: (from) => `${WHO[from]}이 부탁이 고쳐졌다고 익혀 줬어 ⭐`,
+  wish: (from, x) => (x.label ? `${WHO[from]}이 소원권을 썼어 🎟️ "${x.label}"` : `${WHO[from]}이 소원권을 썼어 🎟️`),
   test: () => '알림이 잘 와! 🔔',
 };
 

@@ -88,6 +88,7 @@ function unlocked(key, docId) {
   initPush();
   initSettings();
   initPet();
+  initGrape();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -356,7 +357,7 @@ for (const [who] of BDAY_WHO) {
   lsWrite(PREF_KEY, { film: $('prefFilm').checked, stamp: $('prefStamp').checked })));
 // "나는 누구?"가 바뀌면 그걸 쓰는 화면들 다시 그리기
 document.addEventListener('mechange', () => {
-  for (const f of [renderQna, renderRecipes]) { try { f(); } catch {} }
+  for (const f of [renderQna, renderRecipes, renderGrape]) { try { f(); } catch {} }
   try { if (!$('emoPop').hidden) renderEmoPop(); } catch {}
   try { renderPush().catch(() => {}); } catch {}
 });
@@ -1781,7 +1782,7 @@ function hideDotLabelSoon() {
 const LAYOUT_KEY = 'couple-layout';
 const SEC_INFO = {
   intro: '🎨 첫 화면 그림', gallery: '📷 갤러리', calendar: '📅 일정', bucket: '✅ 버킷리스트',
-  recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', qna: '💬 서로 더 알아가기',
+  recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', grape: '🍇 우리 포도밭', qna: '💬 서로 더 알아가기',
 };
 const secEls = (k) => [...document.querySelectorAll(`.scene[data-sec="${k}"]`)];
 const DEFAULT_ORDER = [...new Set([...document.querySelectorAll('.scene[data-sec]')].map((s) => s.dataset.sec))];
@@ -2104,6 +2105,7 @@ const PET_EARN = [   // [키, 설명, 1개당 간식]
   ['bucket', '✅ 버킷리스트 달성', 3],
   ['recipe', '🍳 레시피 먹어 보기 (별점 주기)', 2],
   ['qa', '💬 오늘의 질문 답하기 (각자)', 1],
+  ['grape', '🍇 부탁 익히기 (고쳐진 부탁)', 3],
 ];
 const PET_WELCOME = 3;      // 데려올 때 주는 간식
 const PET_FEED_EXP = 10;    // 간식 1개 = 경험치 10
@@ -2122,6 +2124,7 @@ function petCounts() {
     bucket: (Array.isArray(items) ? items : []).filter((x) => x && x.done).length,
     recipe: rc.items.filter((x) => x && x.stars > 0).length,
     qa: Object.values(qa.data.a || {}).reduce((n, v) => n + (v && v.bear ? 1 : 0) + (v && v.bunny ? 1 : 0), 0),
+    grape: ripeCount(),
   };
 }
 const petPoints = (c) => PET_EARN.reduce((n, [k, , w]) => n + (Number(c && c[k]) || 0) * w, 0);
@@ -2297,6 +2300,240 @@ if ($('petBox')) {
     const v = (prompt('새 이름 (10자까지)', p.name) || '').trim().slice(0, 10);
     if (v && v !== p.name) await petMutate((cur) => { const q = normPet(cur); return q ? { ...q, name: v } : cur; });
   });
+}
+
+/* ====================== 🍇 우리 포도밭 (칭찬 + 부탁) ====================== */
+// 💜 칭찬 = 보라 포도알 (언제든, 제한 없이)
+// 🌱 부탁 = 초록 포도알 (덜 익음). 받은 사람은 "💪 노력할게" / "🙋 고쳐봤어", 익히는 건 부탁한 사람만 ✨
+//    → 익으면 ⭐ 보라 포도알이 돼서 고친 사람 송이에 들어가 (고친 게 칭찬이 되는 구조)
+// 포도알은 받은 사람 송이에 쌓이고, GRAPE_BUNCH알 = 한 송이 = 🎟️ 소원권 1장 (상대한테 쓰는 소원)
+// 부탁은 각자 진행 중인 게 GRAPE_ASK_MAX개까지 (한꺼번에 쌓이면 지치니까). 부탁은 알림 없이 조용히.
+// 저장: couples/{sha256(docId + ':grape')} = 암호화된 { items: [{ id, kind:'praise'|'ask', from, to, text, at, state, ackAt, ripeAt }], wishes: [{ owner, n, usedAt, text }] }
+const GRAPE_BUNCH = 15;
+const GRAPE_ASK_MAX = 3;
+const grape = { store: null, data: { items: [], wishes: [] }, loaded: false, view: null, kind: 'praise', sel: null, busy: false, shown: new Set() };
+const normGrape = (v) => {
+  const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  return { items: Array.isArray(o.items) ? o.items : [], wishes: Array.isArray(o.wishes) ? o.wishes : [] };
+};
+const grapeId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const isGrape = (it) => it.kind === 'praise' || (it.kind === 'ask' && it.state === 'ripe');
+// 이 사람이 받은 포도알 (오래된 순)
+const grapesOf = (who) => grape.data.items.filter((it) => it.to === who && isGrape(it))
+  .sort((a, b) => (a.kind === 'ask' ? a.ripeAt : a.at) - (b.kind === 'ask' ? b.ripeAt : b.at));
+const ripeCount = () => grape.data.items.filter((it) => it.kind === 'ask' && it.state === 'ripe').length;
+
+async function initGrape() {
+  if (!$('grapeBox')) return;
+  renderGrape();
+  grape.store = await openStore(await sha256hex(state.docId + ':grape'), 'couple-grape-local', $('grapeStatus'), '포도밭');
+  grape.store.subscribe((v) => {
+    grape.data = normGrape(v); grape.loaded = true;
+    petSeen('grape');
+    if ($('grapeBox').contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA') return;   // 쓰는 중이면 나중에
+    renderGrape();
+  });
+}
+async function grapeMutate(fn) {
+  try { await grape.store.mutate((cur) => fn(normGrape(cur))); return true; }
+  catch (e) { console.error(e); $('grapeStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; return false; }
+}
+
+function renderGrape() {
+  if (!$('grapeBox')) return;
+  const me = getMe(), them = partnerOf(me);
+  if (!grape.view || !WHO[grape.view]) grape.view = me || 'bear';
+  const who = grape.view, list = grapesOf(who);
+  const bunches = Math.floor(list.length / GRAPE_BUNCH);
+  // 딱 한 송이가 다 찼으면, 다음 포도가 열릴 때까지 꽉 찬 송이를 보여 줘
+  const justDone = bunches > 0 && list.length % GRAPE_BUNCH === 0;
+  const inBunch = justDone ? list.slice(-GRAPE_BUNCH) : list.slice(bunches * GRAPE_BUNCH);
+
+  // 누구 송이 볼지
+  document.querySelectorAll('#grapeWho button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.who === who));
+    const n = grapesOf(b.dataset.who).length;
+    b.querySelector('small').textContent = `${n}알`;
+  });
+  $('grapeSub').textContent = !grape.loaded ? '불러오는 중…'
+    : justDone ? `${WHO[who].icon} ${WHO[who].name} 포도 · 🎉 ${bunches}번째 송이 완성! 🎟️ 소원권이 생겼어`
+    : `${WHO[who].icon} ${WHO[who].name} 포도 · 이번 송이 ${inBunch.length}/${GRAPE_BUNCH}${bunches ? ` · 다 익은 송이 ${bunches}개 🍇` : ''}`;
+  drawBunch(inBunch);
+  renderGrapeMsg();
+
+  // 쓰기 (상대한테)
+  const canWrite = !!me;
+  $('grapeForm').hidden = !canWrite;
+  $('grapeNoMe').hidden = canWrite;
+  if (canWrite) {
+    const myOpenAsks = grape.data.items.filter((it) => it.kind === 'ask' && it.from === me && it.state !== 'ripe').length;
+    document.querySelectorAll('#grapeKind button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === grape.kind)));
+    const ta = $('grapeText'), full = grape.kind === 'ask' && myOpenAsks >= GRAPE_ASK_MAX;
+    ta.placeholder = grape.kind === 'praise'
+      ? `${WHO[them].name}한테 칭찬 한마디 💜 (예: 오늘 마중 나와줘서 고마웠어)`
+      : `~할 때 ~해서 속상했어. ~해주면 좋겠어 🥺`;
+    ta.disabled = full;
+    $('grapeSend').disabled = full;
+    $('grapeSend').textContent = grape.kind === 'praise' ? '💜 포도 달아주기' : '🌱 부탁 남기기';
+    $('grapeHint').textContent = grape.kind === 'praise' ? `${WHO[them].icon} ${WHO[them].name} 송이에 보라 포도 한 알이 열려`
+      : full ? `진행 중인 부탁이 ${GRAPE_ASK_MAX}개야. 하나가 익으면 또 쓸 수 있어 🌱`
+      : `부탁은 알림 없이 조용히 전해져. 익히는 건 나만 할 수 있어 (지금 ${myOpenAsks}/${GRAPE_ASK_MAX})`;
+  }
+  renderAsks(me, them);
+  renderWishes(me, them);
+}
+
+// 포도송이 그림: 5·4·3·2·1 = 15알 (거꾸로 된 삼각형)
+function drawBunch(inBunch) {
+  const svg = $('grapeSvg'), NS = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+  const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); svg.appendChild(e); return e; };
+  mk('path', { d: 'M100 30 C100 18 104 10 112 4', fill: 'none', stroke: '#7A5A3A', 'stroke-width': 5, 'stroke-linecap': 'round' });
+  mk('path', { d: 'M104 22 C116 6 140 6 150 16 C138 30 116 32 104 22Z', fill: '#9ACB8F', stroke: '#1f1f1f', 'stroke-width': 3, 'stroke-linejoin': 'round' });
+  mk('path', { d: 'M108 21 C120 16 132 14 142 15', fill: 'none', stroke: '#1f1f1f', 'stroke-width': 1.6, 'stroke-linecap': 'round' });
+  const rows = [5, 4, 3, 2, 1], R = 15, gapX = 31, gapY = 27;
+  let k = 0;
+  rows.forEach((n, r) => {
+    for (let c = 0; c < n; c++) {
+      const cx = 100 + (c - (n - 1) / 2) * gapX, cy = 48 + r * gapY, it = inBunch[k];
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'gp' + (it ? (it.kind === 'ask' ? ' ripe' : ' on') : ' empty') + (it && grape.sel === it.id ? ' sel' : '') + (it && !grape.shown.has(it.id) ? ' pop' : ''));
+      if (it) grape.shown.add(it.id);   // 새로 열린 포도만 톡 튀어나오게
+      g.innerHTML = it
+        ? `<circle cx="${cx}" cy="${cy}" r="${R}"/><ellipse cx="${cx - 5}" cy="${cy - 6}" rx="4" ry="2.6" fill="#fff" opacity=".7"/>` +
+          (it.kind === 'ask' ? `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="13">⭐</text>` : '')
+        : `<circle cx="${cx}" cy="${cy}" r="${R}"/>`;
+      if (it) {
+        g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
+        g.setAttribute('aria-label', `${it.kind === 'ask' ? '익은 부탁' : '칭찬'}: ${it.text}`);
+        const pick = () => { grape.sel = grape.sel === it.id ? null : it.id; renderGrape(); };
+        g.addEventListener('click', pick);
+        g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      }
+      svg.appendChild(g);
+      k++;
+    }
+  });
+}
+function renderGrapeMsg() {
+  const box = $('grapeMsg'), it = grape.data.items.find((x) => x.id === grape.sel);
+  box.innerHTML = '';
+  if (!it) { box.textContent = '포도알을 누르면 무슨 말이었는지 보여 🍇'; box.className = 'grape-msg hint'; return; }
+  box.className = 'grape-msg';
+  const head = document.createElement('b');
+  head.textContent = it.kind === 'ask'
+    ? `⭐ 고쳐서 익은 포도 · ${WHO[it.from].icon}의 부탁`
+    : `💜 ${WHO[it.from].icon} ${WHO[it.from].name}의 칭찬`;
+  const t = document.createElement('p'); t.textContent = it.text;
+  const d = document.createElement('small'); d.textContent = prettyDate(ymd(new Date(it.kind === 'ask' ? it.ripeAt : it.at)));
+  box.append(head, t, d);
+}
+
+function renderAsks(me, them) {
+  const box = $('grapeAsks'), open = grape.data.items.filter((it) => it.kind === 'ask' && it.state !== 'ripe');
+  $('grapeAskSum').textContent = `🌱 익어가는 부탁 ${open.length}개`;
+  box.innerHTML = '';
+  if (!open.length) { const p = document.createElement('p'); p.className = 'grape-empty'; p.textContent = '익어가는 부탁이 없어 🌿'; box.appendChild(p); return; }
+  [['나한테 온 부탁', open.filter((it) => it.to === me)], ['내가 한 부탁', open.filter((it) => it.from === me)]].forEach(([title, arr]) => {
+    if (!me || !arr.length) return;
+    const h = document.createElement('p'); h.className = 'grape-h'; h.textContent = title; box.appendChild(h);
+    arr.sort((a, b) => a.at - b.at).forEach((it) => {
+      const li = document.createElement('div'); li.className = 'ask';
+      const t = document.createElement('p'); t.className = 'ask-t'; t.textContent = it.text;
+      const st = document.createElement('small'); st.className = 'ask-st';
+      st.textContent = `${ago(it.at)} · ` + (it.state === 'checking' ? '🙋 고쳐봤대! 확인해 줘' : it.state === 'trying' ? '💪 노력하는 중' : '아직 못 봤을 수도');
+      const row = document.createElement('div'); row.className = 'ask-btns';
+      const btn = (text, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + cls; b.textContent = text; b.onclick = fn; row.appendChild(b); };
+      if (it.to === me) {
+        if (it.state === 'open') btn('💪 노력할게', '', () => askState(it.id, 'trying'));
+        if (it.state !== 'checking') btn('🙋 고쳐봤어', 'green', () => askState(it.id, 'checking'));
+        else { const s = document.createElement('small'); s.textContent = `${WHO[them].name}${josa(WHO[them].name, '이', '가')} 확인하면 ⭐ 포도가 돼`; row.appendChild(s); }
+      } else {
+        btn('✨ 고쳐졌어! 익히기', 'green', () => ripenAsk(it.id));
+        btn('거두기', 'ghost', () => { if (confirm('이 부탁을 거둘까? (지워져)')) grapeMutate((d) => ({ ...d, items: d.items.filter((x) => x.id !== it.id) })); });
+      }
+      li.append(t, st, row);
+      box.appendChild(li);
+    });
+  });
+}
+function renderWishes(me, them) {
+  const box = $('grapeWishes');
+  box.innerHTML = '';
+  BDAY_WHO.forEach(([w, icon, name]) => {
+    const earned = Math.floor(grapesOf(w).length / GRAPE_BUNCH);
+    const used = grape.data.wishes.filter((x) => x.owner === w);
+    const left = Math.max(0, earned - used.length);
+    const row = document.createElement('div'); row.className = 'wish-row';
+    const t = document.createElement('span'); t.textContent = `${icon} ${name} 🎟️ ${left}장`;
+    row.appendChild(t);
+    if (w === me && left > 0) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn green'; b.textContent = '소원권 쓰기';
+      b.onclick = () => useWish(me);
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+    used.slice(-3).reverse().forEach((x) => {
+      const u = document.createElement('p'); u.className = 'wish-used';
+      u.textContent = `✔ "${x.text}" · ${ago(x.usedAt)}`;
+      box.appendChild(u);
+    });
+  });
+}
+
+async function sendGrape() {
+  const me = getMe(), them = partnerOf(me), text = $('grapeText').value.trim().slice(0, 120);
+  if (!me || !text || grape.busy) return;
+  const kind = grape.kind;
+  grape.busy = true;
+  let ok = false;
+  const saved = await grapeMutate((d) => {
+    ok = false;
+    if (kind === 'ask' && d.items.filter((it) => it.kind === 'ask' && it.from === me && it.state !== 'ripe').length >= GRAPE_ASK_MAX) return d;
+    ok = true;
+    const it = { id: grapeId(), kind, from: me, to: them, text, at: Date.now() };
+    if (kind === 'ask') it.state = 'open';
+    return { ...d, items: [...d.items, it] };
+  });
+  grape.busy = false;
+  if (!saved || !ok) return;
+  $('grapeText').value = '';
+  if (kind === 'praise') {
+    grape.view = them;
+    emoToast(`💜 ${WHO[them].name} 송이에 포도 한 알!`);
+    notifyPartner('praise');
+  } else emoToast('🌱 부탁을 조용히 남겼어');
+  renderGrape();
+}
+function askState(id, st) {
+  return grapeMutate((d) => ({ ...d, items: d.items.map((x) => (x.id === id && x.kind === 'ask' && x.state !== 'ripe' && x.to === getMe() ? { ...x, state: st, ackAt: Date.now() } : x)) }));
+}
+async function ripenAsk(id) {
+  const me = getMe();
+  const it = grape.data.items.find((x) => x.id === id);
+  if (!it || it.from !== me) return;   // 익히는 건 부탁한 사람만
+  const ok = await grapeMutate((d) => ({ ...d, items: d.items.map((x) => (x.id === id && x.from === me && x.state !== 'ripe' ? { ...x, state: 'ripe', ripeAt: Date.now() } : x)) }));
+  if (!ok) return;
+  grape.view = it.to; grape.sel = id;
+  emoToast(`⭐ ${WHO[it.to].name} 송이에 익은 포도 한 알! 고마워 💜`);
+  notifyPartner('ripe');
+  renderGrape();
+}
+async function useWish(me) {
+  const text = (prompt('어떤 소원을 쓸까? (예: 설거지 면제, 데이트 코스 내가 정하기)') || '').trim().slice(0, 60);
+  if (!text) return;
+  const ok = await grapeMutate((d) => {
+    const earned = Math.floor(d.items.filter((it) => it.to === me && isGrape(it)).length / GRAPE_BUNCH);
+    if (d.wishes.filter((x) => x.owner === me).length >= earned) return d;
+    return { ...d, wishes: [...d.wishes, { owner: me, n: earned, text, usedAt: Date.now() }] };
+  });
+  if (ok) { emoToast('🎟️ 소원권을 썼어!'); notifyPartner('wish', { label: text }); }
+}
+
+if ($('grapeBox')) {
+  document.querySelectorAll('#grapeWho button').forEach((b) => b.addEventListener('click', () => { grape.view = b.dataset.who; grape.sel = null; renderGrape(); }));
+  document.querySelectorAll('#grapeKind button').forEach((b) => b.addEventListener('click', () => { grape.kind = b.dataset.kind; renderGrape(); $('grapeText').focus(); }));
+  $('grapeSend').addEventListener('click', sendGrape);
 }
 
 /* ====================== 🎮 놀이 (통나무 타기 · 공 받기) ====================== */
