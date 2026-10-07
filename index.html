@@ -379,6 +379,8 @@
   .go-sub{margin:0;font-size:.98rem;color:#444;max-width:28em}
   .game-over .btn{margin-top:8px}
   .game-ctrl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .game-ctrl.one{grid-template-columns:1fr}
+  .game-ctrl[hidden]{display:none}
   .game-ctrl .btn{font-size:1.45rem;padding:14px 8px;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   .game-rec{margin:10px 0 0;font-size:.92rem;color:#555;white-space:pre-line}
   @media (prefers-reduced-motion: reduce){ .pet-pet svg,.dg-tail,.pet-heart{animation:none!important} }
@@ -952,7 +954,7 @@
         </div>
         <details class="pet-earn"><summary>🦴 간식은 어떻게 생겨?</summary><ul id="petEarn"></ul></details>
         <ul class="pet-log" id="petLog" aria-label="최근 돌본 기록"></ul>
-        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" disabled>⚾ 공 받기 (곧!)</button></div>
+        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" class="on" id="gameBallBtn">⚾ 공 받기</button></div>
       </div>
     </div>
   </section>
@@ -1017,9 +1019,12 @@
       <canvas id="gameCanvas" aria-label="통나무 타기 게임 화면. 왼쪽을 누르면 뒤로, 오른쪽을 누르면 앞으로 기울여"></canvas>
       <div class="game-over" id="gameOver" hidden></div>
     </div>
-    <div class="game-ctrl">
+    <div class="game-ctrl" id="gameCtrlLog">
       <button class="btn" id="gameBack" type="button" aria-label="뒤로 기울이기">◀ 뒤로</button>
       <button class="btn" id="gameFwd" type="button" aria-label="앞으로 기울이기">앞으로 ▶</button>
+    </div>
+    <div class="game-ctrl one" id="gameCtrlBall" hidden>
+      <button class="btn green" id="gameCatch" type="button" aria-label="공 잡기">🐾 잡아!</button>
     </div>
     <p class="game-rec" id="gameRec"></p>
   </div>
@@ -1096,6 +1101,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=game1"></script>
+<script type="module" src="app.js?v=game2"></script>
 </body>
 </html>
