@@ -396,6 +396,8 @@
   .gp circle{stroke:#1f1f1f;stroke-width:3}
   .gp.on circle,.gp.ripe circle{fill:#8E6CC9;cursor:pointer}
   .gp.ripe circle{fill:#7A55C0}
+  .gp.green circle{fill:#B7DB9C;cursor:pointer}
+  .gp.green{cursor:pointer}
   .gp.empty circle{fill:#F1ECF8;stroke:#B9A7DA;stroke-dasharray:4 4;stroke-width:2}
   .gp.on,.gp.ripe{cursor:pointer}
   .gp.pop{transform-box:fill-box;transform-origin:center;animation:gpop .35s ease-out}
@@ -404,7 +406,7 @@
   .gp:focus-visible circle{stroke:#E8696A;stroke-width:4.5}
   @keyframes gpop{from{transform:scale(.6);opacity:.4}}
   .grape-msg{margin-top:8px;background:var(--paper);border:2px solid var(--ink);border-radius:12px;padding:8px 12px;font-size:.98rem}
-  .grape-msg.hint{border-style:dashed;color:#888;text-align:center;font-family:var(--hand);font-size:1.1rem}
+  .grape-msg.empty-msg{border-style:dashed;color:#888;text-align:center;font-family:var(--hand);font-size:1.1rem}
   .grape-msg b{font-family:var(--hand);font-size:1.12rem}
   .grape-msg p{margin:2px 0;word-break:keep-all;white-space:pre-wrap}
   .grape-msg small{color:#888}
@@ -1031,9 +1033,9 @@
       </div>
       <div class="grape-stage">
         <svg id="grapeSvg" viewBox="0 0 200 172" role="group" aria-label="포도송이"></svg>
-        <div class="grape-msg hint" id="grapeMsg" aria-live="polite"></div>
+        <div class="grape-msg empty-msg" id="grapeMsg" aria-live="polite"></div>
       </div>
-      <p class="grape-guide">💜 칭찬 = 보라 포도 · 🌱 부탁이 고쳐지면 ⭐ 포도로 익어 · 15알 = 🎟️ 소원권</p>
+      <p class="grape-guide">💜 칭찬 = 보라 포도 · 🌱 부탁 = 초록 포도 (고쳐지면 ⭐로 익어) · 15알이 전부 보라면 🎟️ 소원권</p>
 
       <div id="grapeForm">
         <div class="grape-kind" id="grapeKind" role="group" aria-label="무엇을 쓸까">
@@ -1195,6 +1197,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=grape1"></script>
+<script type="module" src="app.js?v=grape3"></script>
 </body>
 </html>

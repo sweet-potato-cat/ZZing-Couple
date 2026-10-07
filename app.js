@@ -2304,9 +2304,10 @@ if ($('petBox')) {
 
 /* ====================== 🍇 우리 포도밭 (칭찬 + 부탁) ====================== */
 // 💜 칭찬 = 보라 포도알 (언제든, 제한 없이)
-// 🌱 부탁 = 초록 포도알 (덜 익음). 받은 사람은 "💪 노력할게" / "🙋 고쳐봤어", 익히는 건 부탁한 사람만 ✨
-//    → 익으면 ⭐ 보라 포도알이 돼서 고친 사람 송이에 들어가 (고친 게 칭찬이 되는 구조)
-// 포도알은 받은 사람 송이에 쌓이고, GRAPE_BUNCH알 = 한 송이 = 🎟️ 소원권 1장 (상대한테 쓰는 소원)
+// 🌱 부탁 = 초록 포도알 (덜 익음). 고쳐야 하는 사람 송이에 바로 달려서 자리를 차지해.
+//    받은 사람은 "💪 노력할게" / "🙋 고쳐봤어", 익히는 건 부탁한 사람만 ✨ → 그 자리에서 ⭐ 보라 포도로 익어
+// 송이는 GRAPE_BUNCH알. 15자리가 다 차고 **전부 보라색**이어야 완성 = 🎟️ 소원권 1장
+//    (초록이 남아 있으면 완성 안 됨 → 그 뒤 포도는 다음 송이에 대기)
 // 부탁은 각자 진행 중인 게 GRAPE_ASK_MAX개까지 (한꺼번에 쌓이면 지치니까). 부탁은 알림 없이 조용히.
 // 저장: couples/{sha256(docId + ':grape')} = 암호화된 { items: [{ id, kind:'praise'|'ask', from, to, text, at, state, ackAt, ripeAt }], wishes: [{ owner, n, usedAt, text }] }
 const GRAPE_BUNCH = 15;
@@ -2317,10 +2318,20 @@ const normGrape = (v) => {
   return { items: Array.isArray(o.items) ? o.items : [], wishes: Array.isArray(o.wishes) ? o.wishes : [] };
 };
 const grapeId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const isGrape = (it) => it.kind === 'praise' || (it.kind === 'ask' && it.state === 'ripe');
-// 이 사람이 받은 포도알 (오래된 순)
-const grapesOf = (who) => grape.data.items.filter((it) => it.to === who && isGrape(it))
-  .sort((a, b) => (a.kind === 'ask' ? a.ripeAt : a.at) - (b.kind === 'ask' ? b.ripeAt : b.at));
+const isGrape = (it) => it.kind === 'praise' || (it.kind === 'ask' && it.state === 'ripe');   // 보라(익은) 포도
+// 이 사람 송이 계산: 칭찬·부탁(초록 포함)을 생긴 순서대로 15알씩 나눠.
+// 앞에서부터 "꽉 차고 전부 보라"인 송이만 완성으로 셈 → 초록이 익거나 거둬져야 그 송이가 완성돼
+function bunchInfo(who, items = grape.data.items) {
+  const seq = items.filter((it) => it.to === who && (it.kind === 'praise' || it.kind === 'ask')).sort((a, b) => a.at - b.at);
+  const chunks = [];
+  for (let i = 0; i < seq.length; i += GRAPE_BUNCH) chunks.push(seq.slice(i, i + GRAPE_BUNCH));
+  let earned = 0;
+  while (earned < chunks.length && chunks[earned].length === GRAPE_BUNCH && chunks[earned].every(isGrape)) earned++;
+  const justDone = earned > 0 && earned === chunks.length;   // 방금 송이를 다 채움 (다음 포도 전)
+  const cur = justDone ? chunks[earned - 1] : (chunks[earned] || []);
+  const waiting = justDone ? 0 : seq.length - Math.min(seq.length, (earned + 1) * GRAPE_BUNCH);
+  return { seq, earned, justDone, cur, waiting, purple: seq.filter(isGrape).length, green: cur.filter((it) => !isGrape(it)).length };
+}
 const ripeCount = () => grape.data.items.filter((it) => it.kind === 'ask' && it.state === 'ripe').length;
 
 async function initGrape() {
@@ -2343,21 +2354,18 @@ function renderGrape() {
   if (!$('grapeBox')) return;
   const me = getMe(), them = partnerOf(me);
   if (!grape.view || !WHO[grape.view]) grape.view = me || 'bear';
-  const who = grape.view, list = grapesOf(who);
-  const bunches = Math.floor(list.length / GRAPE_BUNCH);
-  // 딱 한 송이가 다 찼으면, 다음 포도가 열릴 때까지 꽉 찬 송이를 보여 줘
-  const justDone = bunches > 0 && list.length % GRAPE_BUNCH === 0;
-  const inBunch = justDone ? list.slice(-GRAPE_BUNCH) : list.slice(bunches * GRAPE_BUNCH);
+  const who = grape.view, B = bunchInfo(who), inBunch = B.cur;
 
   // 누구 송이 볼지
   document.querySelectorAll('#grapeWho button').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.who === who));
-    const n = grapesOf(b.dataset.who).length;
-    b.querySelector('small').textContent = `${n}알`;
+    b.querySelector('small').textContent = `${bunchInfo(b.dataset.who).purple}알`;
   });
   $('grapeSub').textContent = !grape.loaded ? '불러오는 중…'
-    : justDone ? `${WHO[who].icon} ${WHO[who].name} 포도 · 🎉 ${bunches}번째 송이 완성! 🎟️ 소원권이 생겼어`
-    : `${WHO[who].icon} ${WHO[who].name} 포도 · 이번 송이 ${inBunch.length}/${GRAPE_BUNCH}${bunches ? ` · 다 익은 송이 ${bunches}개 🍇` : ''}`;
+    : B.justDone ? `${WHO[who].icon} ${WHO[who].name} 포도 · 🎉 ${B.earned}번째 송이 완성! 🎟️ 소원권이 생겼어`
+    : `${WHO[who].icon} ${WHO[who].name} 포도 · 이번 송이 💜 ${inBunch.length - B.green}/${GRAPE_BUNCH}` +
+      (B.green ? (inBunch.length === GRAPE_BUNCH ? ` · 🌱 ${B.green}알만 익으면 완성!` : ` · 🌱 ${B.green}알 익어가는 중`) : '') +
+      (B.waiting ? ` · 다음 송이 ${B.waiting}알 대기` : '') + (B.earned ? ` · 완성 ${B.earned}송이 🍇` : '');
   drawBunch(inBunch);
   renderGrapeMsg();
 
@@ -2377,7 +2385,7 @@ function renderGrape() {
     $('grapeSend').textContent = grape.kind === 'praise' ? '💜 포도 달아주기' : '🌱 부탁 남기기';
     $('grapeHint').textContent = grape.kind === 'praise' ? `${WHO[them].icon} ${WHO[them].name} 송이에 보라 포도 한 알이 열려`
       : full ? `진행 중인 부탁이 ${GRAPE_ASK_MAX}개야. 하나가 익으면 또 쓸 수 있어 🌱`
-      : `부탁은 알림 없이 조용히 전해져. 익히는 건 나만 할 수 있어 (지금 ${myOpenAsks}/${GRAPE_ASK_MAX})`;
+      : `${WHO[them].icon} 송이에 초록 포도로 달려. 알림 없이 조용히, 익히는 건 나만 (지금 ${myOpenAsks}/${GRAPE_ASK_MAX})`;
   }
   renderAsks(me, them);
   renderWishes(me, them);
@@ -2397,15 +2405,18 @@ function drawBunch(inBunch) {
     for (let c = 0; c < n; c++) {
       const cx = 100 + (c - (n - 1) / 2) * gapX, cy = 48 + r * gapY, it = inBunch[k];
       const g = document.createElementNS(NS, 'g');
-      g.setAttribute('class', 'gp' + (it ? (it.kind === 'ask' ? ' ripe' : ' on') : ' empty') + (it && grape.sel === it.id ? ' sel' : '') + (it && !grape.shown.has(it.id) ? ' pop' : ''));
+      const green = it && !isGrape(it);
+      g.setAttribute('class', 'gp' + (it ? (green ? ' green' : it.kind === 'ask' ? ' ripe' : ' on') : ' empty') + (it && grape.sel === it.id ? ' sel' : '') + (it && !grape.shown.has(it.id) ? ' pop' : ''));
       if (it) grape.shown.add(it.id);   // 새로 열린 포도만 톡 튀어나오게
       g.innerHTML = it
         ? `<circle cx="${cx}" cy="${cy}" r="${R}"/><ellipse cx="${cx - 5}" cy="${cy - 6}" rx="4" ry="2.6" fill="#fff" opacity=".7"/>` +
-          (it.kind === 'ask' ? `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="13">⭐</text>` : '')
+          (green ? `<path d="M${cx} ${cy - R + 1} q4 -7 10 -6 q-2 6 -10 6z" fill="#7FB98A" stroke="#1f1f1f" stroke-width="1.4"/>` +
+            (it.state === 'checking' ? `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="12">🙋</text>` : '')
+          : it.kind === 'ask' ? `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="13">⭐</text>` : '')
         : `<circle cx="${cx}" cy="${cy}" r="${R}"/>`;
       if (it) {
         g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
-        g.setAttribute('aria-label', `${it.kind === 'ask' ? '익은 부탁' : '칭찬'}: ${it.text}`);
+        g.setAttribute('aria-label', `${green ? '익어가는 부탁' : it.kind === 'ask' ? '익은 부탁' : '칭찬'}: ${it.text}`);
         const pick = () => { grape.sel = grape.sel === it.id ? null : it.id; renderGrape(); };
         g.addEventListener('click', pick);
         g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
@@ -2418,14 +2429,19 @@ function drawBunch(inBunch) {
 function renderGrapeMsg() {
   const box = $('grapeMsg'), it = grape.data.items.find((x) => x.id === grape.sel);
   box.innerHTML = '';
-  if (!it) { box.textContent = '포도알을 누르면 무슨 말이었는지 보여 🍇'; box.className = 'grape-msg hint'; return; }
+  if (!it) { box.textContent = '포도알을 누르면 무슨 말이었는지 보여 🍇'; box.className = 'grape-msg empty-msg'; return; }
   box.className = 'grape-msg';
   const head = document.createElement('b');
-  head.textContent = it.kind === 'ask'
-    ? `⭐ 고쳐서 익은 포도 · ${WHO[it.from].icon}의 부탁`
+  const green = it.kind === 'ask' && !isGrape(it);
+  head.textContent = green
+    ? `🌱 익어가는 부탁 · ${WHO[it.from].icon} ${WHO[it.from].name}의 부탁`
+    : it.kind === 'ask' ? `⭐ 고쳐서 익은 포도 · ${WHO[it.from].icon}의 부탁`
     : `💜 ${WHO[it.from].icon} ${WHO[it.from].name}의 칭찬`;
   const t = document.createElement('p'); t.textContent = it.text;
-  const d = document.createElement('small'); d.textContent = prettyDate(ymd(new Date(it.kind === 'ask' ? it.ripeAt : it.at)));
+  const d = document.createElement('small');
+  d.textContent = green
+    ? `${prettyDate(ymd(new Date(it.at)))} · ${it.state === 'checking' ? '🙋 고쳐봤대! 확인 기다리는 중' : it.state === 'trying' ? '💪 노력하는 중' : '아직 덜 익었어'}`
+    : prettyDate(ymd(new Date(it.kind === 'ask' ? it.ripeAt : it.at)));
   box.append(head, t, d);
 }
 
@@ -2461,7 +2477,7 @@ function renderWishes(me, them) {
   const box = $('grapeWishes');
   box.innerHTML = '';
   BDAY_WHO.forEach(([w, icon, name]) => {
-    const earned = Math.floor(grapesOf(w).length / GRAPE_BUNCH);
+    const earned = bunchInfo(w).earned;
     const used = grape.data.wishes.filter((x) => x.owner === w);
     const left = Math.max(0, earned - used.length);
     const row = document.createElement('div'); row.className = 'wish-row';
@@ -2502,7 +2518,7 @@ async function sendGrape() {
     grape.view = them;
     emoToast(`💜 ${WHO[them].name} 송이에 포도 한 알!`);
     notifyPartner('praise');
-  } else emoToast('🌱 부탁을 조용히 남겼어');
+  } else { grape.view = them; emoToast(`🌱 ${WHO[them].name} 송이에 초록 포도로 조용히 달았어`); }
   renderGrape();
 }
 function askState(id, st) {
@@ -2523,7 +2539,7 @@ async function useWish(me) {
   const text = (prompt('어떤 소원을 쓸까? (예: 설거지 면제, 데이트 코스 내가 정하기)') || '').trim().slice(0, 60);
   if (!text) return;
   const ok = await grapeMutate((d) => {
-    const earned = Math.floor(d.items.filter((it) => it.to === me && isGrape(it)).length / GRAPE_BUNCH);
+    const earned = bunchInfo(me, d.items).earned;
     if (d.wishes.filter((x) => x.owner === me).length >= earned) return d;
     return { ...d, wishes: [...d.wishes, { owner: me, n: earned, text, usedAt: Date.now() }] };
   });
