@@ -316,6 +316,7 @@ function fillSettings() {
   }
   const p = prefs();
   $('prefFilm').checked = p.film; $('prefStamp').checked = p.stamp;
+  renderLayoutSettings();
   renderMe();
 }
 function openSettings() {
@@ -1666,12 +1667,14 @@ document.querySelectorAll('.scene').forEach((s) => {
 /* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
 // .scene[data-nav="이름"] 이 있는 섹션마다 점이 하나씩 자동으로 생겨 (새 섹션도 data-nav만 붙이면 됨)
 // 점 누르기 → 그 섹션으로 / 점 위를 위아래로 끌기 → 이름 보면서 빠르게 이동
-const nav = { secs: [], btns: [], cur: -1, idleT: 0, labelT: 0, drag: null, raf: 0 };
+const nav = { secs: [], btns: [], cur: -1, idleT: 0, labelT: 0, drag: null, raf: 0, inited: false };
 
-function initDotNav() {
+// 지금 보이는 섹션(숨긴 메뉴 빼고, 화면 순서대로)마다 점 하나
+function buildDots() {
   const rail = $('dotRail');
-  if (!rail || nav.secs.length) return;
-  nav.secs = [...document.querySelectorAll('.scene[data-nav]')];
+  rail.innerHTML = '';
+  nav.cur = -1;
+  nav.secs = [...document.querySelectorAll('.scene[data-nav]')].filter((s) => !s.hidden);
   nav.btns = nav.secs.map((s, i) => {
     const b = document.createElement('button');
     b.type = 'button'; b.setAttribute('aria-label', `${s.dataset.nav}(으)로 가기`);
@@ -1680,6 +1683,14 @@ function initDotNav() {
     rail.appendChild(b);
     return b;
   });
+  syncDotNav();
+}
+
+function initDotNav() {
+  const rail = $('dotRail');
+  if (!rail || nav.inited) return;
+  nav.inited = true;
+  buildDots();
   $('dotnav').hidden = false;
 
   rail.addEventListener('pointerdown', (e) => {
@@ -1762,6 +1773,82 @@ function hideDotLabelSoon() {
   clearTimeout(nav.labelT);
   nav.labelT = setTimeout(() => $('dotLabel').classList.remove('show'), 700);
 }
+
+/* ====================== 🧩 메뉴 고르기 (보이기 · 순서, 이 기기) ====================== */
+// ⚙️ 설정에서 이 기기에 보일 메뉴랑 순서를 골라. localStorage 'couple-layout' = { order: [key…], hidden: [key…] }
+// 섹션 key는 index.html 의 <section data-sec="…">. 새 섹션은 data-sec만 붙이면 기본 위치에 알아서 들어가.
+// 숨긴 메뉴도 데이터는 계속 불러와 (예: 숨겨도 사진·질문 하면 키우기 간식은 쌓여)
+const LAYOUT_KEY = 'couple-layout';
+const SEC_INFO = {
+  intro: '🎨 첫 화면 그림', gallery: '📷 갤러리', calendar: '📅 일정', bucket: '✅ 버킷리스트',
+  recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', qna: '💬 서로 더 알아가기',
+};
+const secEls = (k) => [...document.querySelectorAll(`.scene[data-sec="${k}"]`)];
+const DEFAULT_ORDER = [...new Set([...document.querySelectorAll('.scene[data-sec]')].map((s) => s.dataset.sec))];
+const secLabel = (k) => SEC_INFO[k] || (secEls(k)[0] && secEls(k)[0].dataset.nav) || k;
+
+function getLayout() {
+  const raw = rawSet(lsRead(LAYOUT_KEY, {}));
+  // 첫 화면 그림(intro)은 항상 맨 위라 순서에서 빼
+  const order = (Array.isArray(raw.order) ? raw.order : []).filter((k, i, a) => k !== 'intro' && DEFAULT_ORDER.includes(k) && a.indexOf(k) === i);
+  DEFAULT_ORDER.forEach((k, i) => { if (k !== 'intro' && !order.includes(k)) order.splice(Math.min(i - 1, order.length), 0, k); });   // 새로 생긴 메뉴
+  const hidden = new Set((Array.isArray(raw.hidden) ? raw.hidden : []).filter((k) => DEFAULT_ORDER.includes(k)));
+  if (order.every((k) => hidden.has(k))) hidden.delete(order[0]);   // 기능 메뉴는 최소 하나는 보이게
+  return { order, hidden };
+}
+function applyLayout() {
+  const { order, hidden } = getLayout(), main = $('scroller');
+  ['intro', ...order].forEach((k) => secEls(k).forEach((s) => { main.appendChild(s); s.hidden = hidden.has(k); }));
+  // 맨 아래 여백 + footer는 마지막으로 보이는 메뉴로
+  main.querySelectorAll('.scene.last').forEach((s) => s.classList.remove('last'));
+  const vis = [...main.querySelectorAll('.scene')].filter((s) => !s.hidden), last = vis[vis.length - 1];
+  if (last) { last.classList.add('last'); const f = document.querySelector('footer'); if (f) last.appendChild(f); }
+  if (nav.inited) { buildDots(); try { renderQna(); } catch {} }   // 점 슬라이더 다시 (알아가기 빨간 점 포함)
+}
+function saveLayout(order, hidden) {
+  lsWrite(LAYOUT_KEY, { order, hidden: [...hidden] });
+  applyLayout();
+  renderLayoutSettings();
+}
+function renderLayoutSettings() {
+  const box = $('setMenus');
+  if (!box) return;
+  const { order, hidden } = getLayout();
+  const shown = order.filter((k) => !hidden.has(k)).length;
+  box.innerHTML = '';
+  const row = (k, i) => {
+    const li = document.createElement('li');
+    li.className = 'menu-row' + (hidden.has(k) ? ' off' : '');
+    const lab = document.createElement('label'); lab.className = 'toggle';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !hidden.has(k);
+    if (k !== 'intro' && !hidden.has(k) && shown <= 1) { cb.disabled = true; li.title = '메뉴는 하나 이상 보여야 해'; }
+    cb.addEventListener('change', () => { const h = new Set(hidden); if (cb.checked) h.delete(k); else h.add(k); saveLayout(order, h); });
+    lab.append(cb, secLabel(k));
+    li.appendChild(lab);
+    if (k !== 'intro') {
+      const mv = (d, text, aria) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tool'; b.textContent = text;
+        b.setAttribute('aria-label', `${secLabel(k)} ${aria}`);
+        b.disabled = i + d < 0 || i + d >= order.length;
+        b.addEventListener('click', () => {
+          const o = [...order]; [o[i], o[i + d]] = [o[i + d], o[i]];
+          saveLayout(o, hidden);
+          const again = $('setMenus').querySelectorAll('.menu-row')[i + d + 1];   // 옮긴 줄에 포커스 유지
+          if (again) { const t = again.querySelectorAll('.tool')[d < 0 ? 0 : 1]; if (t && !t.disabled) t.focus(); }
+        });
+        li.appendChild(b);
+      };
+      mv(-1, '▲', '위로'); mv(1, '▼', '아래로');
+    } else {
+      const s = document.createElement('span'); s.className = 'menu-fixed'; s.textContent = '맨 위 고정'; li.appendChild(s);
+    }
+    box.appendChild(li);
+  };
+  row('intro', -1);
+  order.forEach(row);
+}
+if ($('setMenusReset')) $('setMenusReset').addEventListener('click', () => { lsWrite(LAYOUT_KEY, {}); applyLayout(); renderLayoutSettings(); });
+applyLayout();
 
 /* ====================== 서로 더 알아가기 (오늘의 질문) ====================== */
 // 하루 한 질문: 그날 처음 연 사람이 정하고(공유 문서에 기록) 둘이 같은 질문을 봐.

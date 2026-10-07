@@ -406,6 +406,16 @@
   .set-sub{font-family:var(--hand);font-size:1.15rem;color:#555;margin:2px 0 6px}
   .set-panel .toggle{margin-bottom:10px}
   .set-bday label{min-width:5.2em}
+  .scene[hidden]{display:none!important}
+  .menu-list{list-style:none;margin:0 0 4px;padding:0;border:2px solid var(--ink);border-radius:12px;overflow:hidden;background:var(--paper)}
+  .menu-row{display:flex;align-items:center;gap:2px;padding:3px 6px 3px 10px;border-bottom:2px dotted #ccc}
+  .menu-row:last-child{border-bottom:0}
+  .menu-row .toggle{flex:1;min-width:0;margin:0!important;font-size:1.12rem}
+  .menu-row.off .toggle{color:#999}
+  .menu-row .tool{font-size:1rem;opacity:.75;padding:6px 9px}
+  .menu-row .tool[disabled]{opacity:.18;cursor:default}
+  .menu-fixed{font-size:.82rem;color:#999;padding-right:6px}
+  .menu-reset{display:block;margin:2px 0 12px auto;font-size:.9rem}
   .set-bday .tool[hidden]{display:none}
   .set-panel .push-row{margin-top:4px}
   .set-lock{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 4px;padding-top:12px;border-top:2px dotted #bbb}
@@ -798,16 +808,16 @@
 <div class="dday" id="dday" hidden></div>
 
 <main class="scroller" id="scroller">
-  <section data-nav="곰돌찡" class="scene" aria-label="곰돌찡">
+  <section data-nav="곰돌찡" data-sec="intro" class="scene" aria-label="곰돌찡">
     <div class="bubble bear">곰돌찡<span class="blush"></span></div>
     <div class="hint">내려 봐 ↓</div>
   </section>
 
-  <section data-nav="토끼찡" class="scene" aria-label="토끼찡">
+  <section data-nav="토끼찡" data-sec="intro" class="scene" aria-label="토끼찡">
     <div class="bubble bunny">토끼찡<span class="blush"></span></div>
   </section>
 
-  <section data-nav="우리 ♥" class="scene" id="together" aria-label="곰돌찡과 토끼찡">
+  <section data-nav="우리 ♥" data-sec="intro" class="scene" id="together" aria-label="곰돌찡과 토끼찡">
     <div class="duo">
       <div class="bubble bear">곰돌찡</div>
       <svg class="heart" viewBox="0 0 64 58" aria-label="하트" role="img">
@@ -818,7 +828,7 @@
     </div>
   </section>
 
-  <section data-nav="갤러리" class="scene" aria-label="갤러리">
+  <section data-nav="갤러리" data-sec="gallery" class="scene" aria-label="갤러리">
     <div class="panel">
       <h2>갤러리</h2>
       <p class="sub" id="galSub">우리가 같이 찍은 사진들</p>
@@ -840,7 +850,7 @@
     </div>
   </section>
 
-  <section data-nav="일정" class="scene cal-scene" aria-label="일정">
+  <section data-nav="일정" data-sec="calendar" class="scene cal-scene" aria-label="일정">
     <div class="panel">
       <h2>일정</h2>
       <p class="sub" id="calSub">날짜를 누르고 일정을 적어 봐</p>
@@ -862,7 +872,7 @@
     </div>
   </section>
 
-  <section data-nav="버킷리스트" class="scene" aria-label="버킷리스트">
+  <section data-nav="버킷리스트" data-sec="bucket" class="scene" aria-label="버킷리스트">
     <div class="panel">
       <h2>버킷리스트</h2>
       <p class="sub" id="count">0개 중 0개 완료</p>
@@ -876,7 +886,7 @@
     </div>
   </section>
 
-  <section data-nav="레시피" class="scene" aria-label="우리들의 레시피">
+  <section data-nav="레시피" data-sec="recipe" class="scene" aria-label="우리들의 레시피">
     <div class="panel">
       <h2>우리들의 레시피</h2>
       <p class="sub" id="rcSub">먹고 싶은 메뉴랑 레시피 링크를 모아 두자</p>
@@ -896,7 +906,7 @@
     </div>
   </section>
 
-  <section data-nav="키우기" class="scene" aria-label="같이 키우기">
+  <section data-nav="키우기" data-sec="pet" class="scene" aria-label="같이 키우기">
     <div class="panel" id="petBox">
       <h2>같이 키우기</h2>
       <p class="sub" id="petSub">불러오는 중…</p>
@@ -959,7 +969,7 @@
     </div>
   </section>
 
-  <section data-nav="알아가기" class="scene last" aria-label="서로 더 알아가기">
+  <section data-nav="알아가기" data-sec="qna" class="scene last" aria-label="서로 더 알아가기">
     <div class="panel">
       <h2>서로 더 알아가기</h2>
       <p class="sub" id="qaSub">매일 질문 하나! 둘 다 답하면 열려</p>
@@ -1060,6 +1070,9 @@
       <label class="toggle"><input type="checkbox" id="prefFilm" checked> 🎞️ 필름 느낌</label>
       <label class="toggle"><input type="checkbox" id="prefStamp" checked> 📅 날짜 도장</label>
     </div>
+    <div class="set-sub">🧩 보일 메뉴 · 순서</div>
+    <ul class="menu-list" id="setMenus" aria-label="보일 메뉴와 순서"></ul>
+    <button type="button" class="qa-link menu-reset" id="setMenusReset">기본으로 되돌리기</button>
     <div class="push-row" id="pushRow" hidden>
       <button type="button" class="push-btn" id="pushBtn">🔔 알림 켜기</button>
       <p class="push-note" id="pushNote"></p>
@@ -1101,6 +1114,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=game2"></script>
+<script type="module" src="app.js?v=menu1"></script>
 </body>
 </html>
