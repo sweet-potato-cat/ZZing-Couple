@@ -2,6 +2,7 @@ import * as CFG from './config.js';
 import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
 import { BallGame } from './games/ballcatch.js?v=2';
+import { HurdleGame } from './games/hurdle.js?v=1';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2573,6 +2574,13 @@ const GAMES = {
     exp: (s) => Math.min(10, Math.max(1, Math.round(s / 25))),   // 25점마다 ⭐1, 최대 10
     fail: '끝! 🐾',
   },
+  run: {
+    title: '🏃 허들 넘기', Cls: HurdleGame, ctrl: 'gameCtrlRun',
+    help: '허들은 ⬆ 점프(길게 누르면 더 높이), 새는 ⬇ 숙이기! 보라색 높은 새는 그냥 달려. 부딪히면 끝',
+    round: (v) => Math.floor(v), fmt: (v) => `${Math.floor(v)}m`,
+    exp: (m) => Math.min(10, Math.max(1, Math.round(m / 80))),   // 80m마다 ⭐1, 최대 10
+    fail: '꽈당! 🐶',
+  },
 };
 const gm = { key: null, game: null, imgs: null, playing: false };
 
@@ -2690,16 +2698,27 @@ async function finishGame(key, score) {
 if ($('gameSheet')) {
   $('gameLogBtn').addEventListener('click', () => openGame('log'));
   $('gameBallBtn').addEventListener('click', () => openGame('ball'));
+  $('gameRunBtn').addEventListener('click', () => openGame('run'));
   $('gameClose').addEventListener('click', closeGame);
   // 터치 반응이 늦으면 억울하니까 click 말고 pointerdown
   const on = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); if (gm.game) fn(gm.game); });
   on('gameBack', (g) => g.push(-1));
   on('gameFwd', (g) => g.push(+1));
   on('gameCatch', (g) => g.tap());
+  // 허들: 점프는 누르는 동안 더 높이, 숙이기는 누르고 있는 동안만
+  const hold = (id, down, up) => {
+    const el = $(id);
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch {} if (gm.game) down(gm.game); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, () => { if (gm.game) up(gm.game); }));
+  };
+  hold('gameJump', (g) => g.jump(), (g) => g.release());
+  hold('gameDuck', (g) => g.duck(true), (g) => g.duck(false));
+  $('gameCanvas').addEventListener('pointerup', () => { if (gm.key === 'run' && gm.game) gm.game.release(); });
   $('gameCanvas').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (!gm.game) return;
     if (gm.key === 'ball') { gm.game.tap(); return; }
+    if (gm.key === 'run') { gm.game.jump(); return; }   // 화면 누르기 = 점프
     const r = e.currentTarget.getBoundingClientRect();
     gm.game.push(e.clientX - r.left < r.width / 2 ? -1 : +1);
   });
@@ -2709,6 +2728,13 @@ if ($('gameSheet')) {
     else if (gm.key === 'log' && e.key === 'ArrowLeft') { e.preventDefault(); gm.game.push(-1); }
     else if (gm.key === 'log' && e.key === 'ArrowRight') { e.preventDefault(); gm.game.push(+1); }
     else if (gm.key === 'ball' && (e.key === ' ' || e.key === 'ArrowUp') && $('gameOver').hidden) { e.preventDefault(); if (!e.repeat) gm.game.tap(); }
+    else if (gm.key === 'run' && (e.key === ' ' || e.key === 'ArrowUp') && $('gameOver').hidden) { e.preventDefault(); if (!e.repeat) gm.game.jump(); }
+    else if (gm.key === 'run' && e.key === 'ArrowDown') { e.preventDefault(); gm.game.duck(true); }
+  });
+  document.addEventListener('keyup', (e) => {
+    if ($('gameSheet').hidden || !gm.game || gm.key !== 'run') return;
+    if (e.key === ' ' || e.key === 'ArrowUp') gm.game.release();
+    else if (e.key === 'ArrowDown') gm.game.duck(false);
   });
   // 다른 앱 갔다 오면 일시정지
   document.addEventListener('visibilitychange', () => {

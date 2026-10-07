@@ -1017,7 +1017,7 @@
         </div>
         <details class="pet-earn"><summary>🦴 간식은 어떻게 생겨?</summary><ul id="petEarn"></ul></details>
         <ul class="pet-log" id="petLog" aria-label="최근 돌본 기록"></ul>
-        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" class="on" id="gameBallBtn">⚾ 공 받기</button></div>
+        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" class="on" id="gameBallBtn">⚾ 공 받기</button><button type="button" class="on" id="gameRunBtn">🏃 허들 넘기</button></div>
       </div>
     </div>
   </section>
@@ -1116,6 +1116,10 @@
       <button class="btn" id="gameBack" type="button" aria-label="뒤로 기울이기">◀ 뒤로</button>
       <button class="btn" id="gameFwd" type="button" aria-label="앞으로 기울이기">앞으로 ▶</button>
     </div>
+    <div class="game-ctrl" id="gameCtrlRun" hidden>
+      <button class="btn green" id="gameJump" type="button" aria-label="점프 (길게 누르면 더 높이)">⬆ 점프</button>
+      <button class="btn" id="gameDuck" type="button" aria-label="숙이기 (누르고 있는 동안)">⬇ 숙이기</button>
+    </div>
     <div class="game-ctrl one" id="gameCtrlBall" hidden>
       <button class="btn green" id="gameCatch" type="button" aria-label="공 잡기">🐾 잡아!</button>
     </div>
@@ -1197,6 +1201,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=ball2"></script>
+<script type="module" src="app.js?v=run1"></script>
 </body>
 </html>
