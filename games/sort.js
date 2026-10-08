@@ -19,7 +19,7 @@ const SHUF_AT = 60, SHUF_N = 4, SHUF_WARN = 0.45, SHUF_MOVE = 0.4;   // 순서 �
 const rand = (a, b) => a + Math.random() * (b - a);
 const ease = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const MAX_RUN = 4;                                              // 같은 친구가 연속으로 최대 몇 번
-const intervalOf = (n) => Math.max(0.34, 0.95 - n * 0.012);     // 한 칸 내려오는 시간(초): 맞힐수록 짧아짐 (50개쯤 최고 속도)
+const intervalOf = (n) => Math.max(0.34, 0.8 - n * 0.009);      // 한 칸 내려오는 시간(초): 처음 0.8초 → 맞힐수록 짧아짐 (50개쯤 최고 속도 0.34초)
 const BG_FADE = 0.8;                                            // 배경 만화 흐리게 (0 = 그대로, 1 = 안 보임)
 const ready = (img) => img && img.complete && img.naturalWidth > 0;
 
