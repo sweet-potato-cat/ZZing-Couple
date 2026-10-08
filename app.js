@@ -90,6 +90,7 @@ function unlocked(key, docId) {
   initSettings();
   initPet();
   initGrape();
+  initFarm();
 }
 
 // PIN 통과 후: 기억된 열쇠가 있으면 바로 열고, 없으면 2단계로
@@ -1783,7 +1784,7 @@ function hideDotLabelSoon() {
 const LAYOUT_KEY = 'couple-layout';
 const SEC_INFO = {
   intro: '🎨 첫 화면 그림', gallery: '📷 갤러리', calendar: '📅 일정', bucket: '✅ 버킷리스트',
-  recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', grape: '🍇 우리 포도밭', qna: '💬 서로 더 알아가기',
+  recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', grape: '🍇 포도 심기', qna: '💬 서로 더 알아가기',
 };
 const secEls = (k) => [...document.querySelectorAll(`.scene[data-sec="${k}"]`)];
 const DEFAULT_ORDER = [...new Set([...document.querySelectorAll('.scene[data-sec]')].map((s) => s.dataset.sec))];
@@ -2145,8 +2146,8 @@ async function initPet() {
   if (!$('petBox')) return;
   renderPet();
   pet.store = await openStore(await sha256hex(state.docId + ':pet'), 'couple-pet-local', $('petStatus'), '키우기');
-  pet.store.subscribe((v) => { pet.data = normPet(v); pet.loaded = true; renderPet(); });
-  setInterval(() => { if (!document.hidden) renderPet(); }, 60000);   // 시간이 지나 배고파지는 것 반영
+  pet.store.subscribe((v) => { pet.data = normPet(v); pet.loaded = true; renderPet(); syncFarmPets(); renderFarm(); });
+  setInterval(() => { if (!document.hidden) { renderPet(); syncFarmPets(); } }, 60000);   // 시간이 지나 배고파지는 것 반영
 }
 async function petMutate(fn) {
   try { await pet.store.mutate(fn); return true; }
@@ -2303,7 +2304,7 @@ if ($('petBox')) {
   });
 }
 
-/* ====================== 🍇 우리 포도밭 (칭찬 + 부탁) ====================== */
+/* ====================== 🍇 포도 심기 → 포도 만들기 탭 (칭찬 + 부탁) ====================== */
 // 💜 칭찬 = 보라 포도알 (언제든, 제한 없이)
 // 🌱 부탁 = 초록 포도알 (덜 익음). 고쳐야 하는 사람 송이에 바로 달려서 자리를 차지해.
 //    받은 사람은 "💪 노력할게" / "🙋 고쳐봤어", 익히는 건 부탁한 사람만 ✨ → 그 자리에서 ⭐ 보라 포도로 익어
@@ -2363,7 +2364,7 @@ function renderGrape() {
     b.querySelector('small').textContent = `${bunchInfo(b.dataset.who).purple}알`;
   });
   $('grapeSub').textContent = !grape.loaded ? '불러오는 중…'
-    : B.justDone ? `${WHO[who].icon} ${WHO[who].name} 포도 · 🎉 ${B.earned}번째 송이 완성! 🎟️ 소원권이 생겼어`
+    : B.justDone ? `${WHO[who].icon} ${WHO[who].name} 포도 · 🎉 ${B.earned}번째 송이 완성! 🎟️ 소원권이 생겼어 · 🌿 포도밭에 심을 수 있어`
     : `${WHO[who].icon} ${WHO[who].name} 포도 · 이번 송이 💜 ${inBunch.length - B.green}/${GRAPE_BUNCH}` +
       (B.green ? (inBunch.length === GRAPE_BUNCH ? ` · 🌱 ${B.green}알만 익으면 완성!` : ` · 🌱 ${B.green}알 익어가는 중`) : '') +
       (B.waiting ? ` · 다음 송이 ${B.waiting}알 대기` : '') + (B.earned ? ` · 완성 ${B.earned}송이 🍇` : '');
@@ -2390,6 +2391,7 @@ function renderGrape() {
   }
   renderAsks(me, them);
   renderWishes(me, them);
+  renderFarm();   // 🌿 심을 송이 수 · 탭 빨간 점
 }
 
 // 포도송이 그림: 5·4·3·2·1 = 15알 (거꾸로 된 삼각형)
@@ -2551,6 +2553,290 @@ if ($('grapeBox')) {
   document.querySelectorAll('#grapeWho button').forEach((b) => b.addEventListener('click', () => { grape.view = b.dataset.who; grape.sel = null; renderGrape(); }));
   document.querySelectorAll('#grapeKind button').forEach((b) => b.addEventListener('click', () => { grape.kind = b.dataset.kind; renderGrape(); $('grapeText').focus(); }));
   $('grapeSend').addEventListener('click', sendGrape);
+}
+
+/* ====================== 🌿 포도밭 가꾸기 (완성한 송이 심기 + 펫 산책) ====================== */
+// 송이를 다 채우면 🎟️ 소원권은 그대로 받고, 그 송이를 여기 심을 수도 있어 (송이 1개 = 포도나무 1그루)
+// 심을 수 있는 수 = 완성 송이(bunchInfo.earned) − 이미 심은 수 → 두 번 심거나 부풀릴 수 없음
+// 심는 건 송이 주인만. 밭은 둘이 같이 하나. 빈 자리를 눌러서 골라 심거나 🌱 심기 버튼(앞자리부터)
+// 밭에선 지금 키우는 펫 + (나중에) 다 키워서 보낸 펫들이 돌아다녀. 밭이 화면에 보일 때만 움직여 (배터리)
+// 저장: couples/{sha256(docId + ':vineyard')} = 암호화된 {
+//   vines: [{ id, owner:'bear'|'bunny', n(그 사람 몇 번째 송이), slot(밭 자리), at }],
+//   pets:  [{ id, kind, name, exp, at, retiredAt }]   ← 🐶 "포도밭으로 보내기"(은퇴)용 자리. 아직 넣는 기능은 없음
+// }
+const FW = 320, FCOLS = 5, FCELL = 60, FROW = 66, FTOP = 34;
+const FARM_TAB_KEY = 'couple-grape-tab';
+const FARM_PET_W = { 아기: 34, 꼬마: 40, 어른: 46 };   // 밭에서 펫 크기 (밭 너비 320 기준)
+const farm = {
+  store: null, data: { vines: [], pets: [] }, loaded: false, tab: 'make', sel: null, fresh: null, busy: false,
+  walkers: [], sig: '', raf: 0, last: 0, visible: false, img: {},
+};
+try { if (localStorage.getItem(FARM_TAB_KEY) === 'farm') farm.tab = 'farm'; } catch {}
+const frand = (a, b) => a + Math.random() * (b - a);
+const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const normFarm = (v) => {
+  const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  return {
+    vines: (Array.isArray(o.vines) ? o.vines : []).filter((x) => x && WHO[x.owner] && Number.isInteger(x.slot) && x.slot >= 0),
+    pets: (Array.isArray(o.pets) ? o.pets : []).filter((x) => x && PET_KINDS[x.kind]),
+  };
+};
+const vinesOf = (who, d = farm.data) => d.vines.filter((v) => v.owner === who).length;
+const plantable = (who, d = farm.data) => (grape.loaded && farm.loaded && WHO[who] ? Math.max(0, bunchInfo(who).earned - vinesOf(who, d)) : 0);
+
+async function initFarm() {
+  if (!$('grapeFarm')) return;
+  setGrapeTab(farm.tab);
+  farm.store = await openStore(await sha256hex(state.docId + ':vineyard'), 'couple-vine-local', $('farmStatus'), '포도밭');
+  farm.store.subscribe((v) => { farm.data = normFarm(v); farm.loaded = true; renderFarm(); });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((es) => { farm.visible = es.some((e) => e.isIntersecting); farmKick(); }).observe($('farmField'));
+  } else farm.visible = true;
+  document.addEventListener('visibilitychange', farmKick);
+  window.addEventListener('resize', farmPlace);
+}
+async function farmMutate(fn) {
+  try { await farm.store.mutate((cur) => fn(normFarm(cur))); return true; }
+  catch (e) { console.error(e); $('farmStatus').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; return false; }
+}
+
+// 왼쪽 위 탭: 🍇 포도 만들기 / 🌿 포도밭 가꾸기 (이 기기에서 마지막 탭 기억)
+function setGrapeTab(t) {
+  farm.tab = t === 'farm' ? 'farm' : 'make';
+  try { localStorage.setItem(FARM_TAB_KEY, farm.tab); } catch {}
+  document.querySelectorAll('#grapeTabs [role="tab"]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === farm.tab)));
+  $('grapeMake').hidden = farm.tab !== 'make';
+  $('grapeFarm').hidden = farm.tab !== 'farm';
+  renderFarm();
+  farmKick();
+}
+
+// 밭 크기: 5칸씩 줄. 마지막으로 심은 줄 아래에 늘 빈 줄 하나 (최소 2줄)
+function farmLayout() {
+  const used = farm.data.vines.reduce((m, v) => Math.max(m, v.slot), -1);
+  const rows = Math.max(2, Math.floor(used / FCOLS) + 2);
+  return { rows, plots: rows * FCOLS, H: FTOP + rows * FROW + 8 };
+}
+const plotXY = (slot) => ({ x: 40 + (slot % FCOLS) * FCELL, y: FTOP + Math.floor(slot / FCOLS) * FROW + 54 });
+
+function renderFarm() {
+  if (!$('grapeFarm')) return;
+  const me = getMe(), mine = plantable(me);
+  $('farmDot').hidden = !(mine > 0);
+  if (farm.tab !== 'farm') return;   // 안 보일 땐 탭의 빨간 점만
+  const total = farm.data.vines.length;
+  $('farmSub').textContent = !farm.loaded || !grape.loaded ? '불러오는 중…'
+    : (total ? `🌿 포도나무 ${total}그루 (🐻 ${vinesOf('bear')} · 🐰 ${vinesOf('bunny')})` : '아직 심은 포도나무가 없어. 송이를 다 채우면 여기 심을 수 있어 🌱') +
+      (pet.data ? ` · ${pet.data.name} 산책 중 🐾` : '');
+  drawFarm(mine);
+  renderFarmMsg();
+  renderFarmPlant(me);
+  syncFarmPets();
+}
+
+const vineSvg = (x, y, owner) => {
+  const bunch = [[-5, 0], [0, 0], [5, 0], [-2.5, 4.5], [2.5, 4.5], [0, 9]]
+    .map(([dx, dy]) => `<circle class="vb" cx="${x + 9 + dx}" cy="${y - 30 + dy}" r="3.4" fill="#8E6CC9" stroke="#1f1f1f" stroke-width="1.3"/>`).join('');
+  return `<ellipse cx="${x}" cy="${y}" rx="15" ry="4.5" fill="#A87A52" stroke="#1f1f1f" stroke-width="1.3"/>` +
+    `<path d="M${x} ${y} C${x - 5} ${y - 14} ${x + 5} ${y - 26} ${x} ${y - 40}" fill="none" stroke="#7A5A3A" stroke-width="4" stroke-linecap="round"/>` +
+    `<path d="M${x} ${y - 36} q-14 -10 -20 2 q10 8 20 -2z" fill="#9ACB8F" stroke="#1f1f1f" stroke-width="1.4" stroke-linejoin="round"/>` +
+    `<path d="M${x} ${y - 40} q12 -12 20 0 q-10 8 -20 0z" fill="#9ACB8F" stroke="#1f1f1f" stroke-width="1.4" stroke-linejoin="round"/>` +
+    bunch + `<text x="${x - 14}" y="${y - 4}" text-anchor="middle" font-size="9">${WHO[owner].icon}</text>`;
+};
+function drawFarm(mine) {
+  const svg = $('farmSvg'), NS = 'http://www.w3.org/2000/svg', L = farmLayout();
+  svg.setAttribute('viewBox', `0 0 ${FW} ${L.H}`);
+  svg.innerHTML = '';
+  const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); svg.appendChild(e); return e; };
+  // 하늘 · 해 · 울타리
+  el('rect', { x: 0, y: 0, width: FW, height: FTOP, fill: '#EAF3FC' });
+  el('circle', { cx: 292, cy: 13, r: 7, fill: '#FFD84D', stroke: '#1f1f1f', 'stroke-width': 2 });
+  for (let x = 8; x < FW; x += 24) el('path', { d: `M${x} ${FTOP} V${FTOP - 15} l3.5 -4 l3.5 4 V${FTOP}`, fill: '#FFF6E8', stroke: '#1f1f1f', 'stroke-width': 1.5, 'stroke-linejoin': 'round' });
+  el('path', { d: `M0 ${FTOP - 9} H${FW}`, stroke: '#1f1f1f', 'stroke-width': 1.5 });
+  el('path', { d: `M0 ${FTOP} H${FW}`, stroke: '#1f1f1f', 'stroke-width': 2 });
+  // 밭고랑
+  for (let r = 0; r < L.rows; r++) {
+    const y = FTOP + r * FROW + 54;
+    el('rect', { x: 10, y: y - 6, width: FW - 20, height: 12, rx: 6, fill: '#D8B48C', stroke: '#1f1f1f', 'stroke-width': 1.4 });
+  }
+  const bySlot = new Map(farm.data.vines.map((v) => [v.slot, v]));
+  for (let s = 0; s < L.plots; s++) {
+    const { x, y } = plotXY(s), v = bySlot.get(s), g = el('g', {});
+    const tap = (fn) => {
+      g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
+      g.addEventListener('click', fn);
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+    };
+    if (v) {
+      g.setAttribute('class', 'vine' + (farm.sel === v.id ? ' sel' : '') + (farm.fresh === v.id ? ' pop' : ''));
+      g.setAttribute('aria-label', `${WHO[v.owner].name}의 ${v.n}번째 송이`);
+      g.innerHTML = vineSvg(x, y, v.owner);
+      tap(() => { farm.sel = farm.sel === v.id ? null : v.id; farm.fresh = null; renderFarm(); });
+    } else {
+      const can = mine > 0 && !farm.busy;
+      g.setAttribute('class', 'plot' + (can ? ' can' : ''));
+      g.innerHTML = `<ellipse class="pm" cx="${x}" cy="${y}" rx="15" ry="4.5" fill="#C29068" stroke="#8a6a4a" stroke-width="1.2" stroke-dasharray="3 3"/>` +
+        (can ? `<text class="pm" x="${x}" y="${y - 8}" text-anchor="middle" font-size="15" font-weight="700" fill="#4F8A45">+</text>` : '');
+      if (can) { g.setAttribute('aria-label', `${s + 1}번 자리에 심기`); tap(() => plantVine(s)); }
+    }
+  }
+}
+function renderFarmMsg() {
+  const box = $('farmMsg'), v = farm.data.vines.find((x) => x.id === farm.sel);
+  box.innerHTML = '';
+  if (!v) {
+    box.className = 'grape-msg empty-msg';
+    box.textContent = farm.data.vines.length ? '포도나무를 누르면 누구 송이였는지 보여 🍇'
+      : pet.data ? `🐶 ${pet.data.name}${josa(pet.data.name, '을', '를')} 누르면 한마디 해` : '🐶 같이 키우기에서 데려온 친구가 여기서 산책해';
+    return;
+  }
+  box.className = 'grape-msg';
+  const seq = bunchInfo(v.owner).seq.slice((v.n - 1) * GRAPE_BUNCH, v.n * GRAPE_BUNCH);
+  const praise = seq.filter((it) => it.kind === 'praise').length, ripe = seq.length - praise;
+  const b = document.createElement('b'); b.textContent = `🍇 ${WHO[v.owner].icon} ${WHO[v.owner].name}의 ${v.n}번째 송이`;
+  const p = document.createElement('p'); p.textContent = `💜 칭찬 ${praise}알` + (ripe ? ` · ⭐ 고친 부탁 ${ripe}알` : '');
+  const d = document.createElement('small'); d.textContent = `${prettyDate(ymd(new Date(v.at)))}에 심었어`;
+  box.append(b, p, d);
+}
+function renderFarmPlant(me) {
+  const box = $('farmPlant');
+  box.innerHTML = '';
+  BDAY_WHO.forEach(([w, icon, name]) => {
+    const n = plantable(w), row = document.createElement('div'); row.className = 'farm-row';
+    const t = document.createElement('span'); t.textContent = `${icon} ${name} · 심은 나무 ${vinesOf(w)}그루` + (n ? ` · 🌱 심을 송이 ${n}개` : '');
+    row.appendChild(t);
+    if (w === me && n > 0) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn green'; b.textContent = '🌱 심기';
+      b.disabled = farm.busy; b.onclick = () => plantVine();
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  });
+  if (!me) { const p = document.createElement('p'); p.className = 'grape-nome'; p.textContent = '⚙️ 설정에서 "나는 누구?"를 고르면 내 송이를 심을 수 있어'; box.appendChild(p); }
+}
+async function plantVine(slot) {
+  const me = getMe();
+  if (!me || farm.busy || plantable(me) < 1) return;
+  farm.busy = true;
+  let placed = null;
+  const ok = await farmMutate((d) => {
+    placed = null;
+    const n = vinesOf(me, d);
+    if (n >= bunchInfo(me).earned) return d;   // 다른 기기에서 먼저 심었으면 그대로
+    const taken = new Set(d.vines.map((v) => v.slot));
+    let s = Number.isInteger(slot) && slot >= 0 && !taken.has(slot) ? slot : 0;
+    while (taken.has(s)) s++;
+    placed = { id: grapeId(), owner: me, n: n + 1, slot: s, at: Date.now() };
+    return { ...d, vines: [...d.vines, placed] };
+  });
+  farm.busy = false;
+  if (ok && placed) {
+    farm.sel = placed.id; farm.fresh = placed.id;
+    setTimeout(() => { if (farm.fresh === placed.id) farm.fresh = null; }, 900);
+    emoToast(`🌱 ${WHO[me].name}의 ${placed.n}번째 송이를 심었어!`);
+  }
+  renderFarm();
+}
+
+/* --- 밭에서 돌아다니는 펫 --- */
+function farmPetList() {
+  const list = [];
+  if (pet.data) list.push({ id: 'cur', cur: true, kind: pet.data.kind, name: pet.data.name, stage: petStage(petLevel(pet.data.exp).lv), hungry: petFull(pet.data) < 30 });
+  farm.data.pets.forEach((p) => list.push({ id: p.id, cur: false, kind: p.kind, name: p.name, stage: petStage(petLevel(p.exp).lv), hungry: false }));
+  return list;
+}
+// 키우기 화면의 SVG를 그림 한 장으로 (배고프면 시무룩한 얼굴). 고양이·햄스터 그림이 생기면 kind별로 나누기
+function farmPetImg(kind, hungry) {
+  const key = kind + (hungry ? ':h' : '');
+  if (farm.img[key]) return farm.img[key];
+  const src = document.querySelector('#petPet svg');
+  if (!src) return '';
+  const c = src.cloneNode(true);
+  c.querySelectorAll(hungry ? '.dg-happy' : '.dg-sad').forEach((n) => n.remove());
+  c.removeAttribute('class'); c.setAttribute('width', '200'); c.setAttribute('height', '214');
+  return (farm.img[key] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c)));
+}
+function farmTarget(w) {
+  const H = farmLayout().H;
+  w.tx = frand(24, FW - 24); w.ty = frand(FTOP + 22, H - 6);
+  w.speed = w.p.hungry ? 8 : frand(16, 26);
+}
+function syncFarmPets() {
+  const layer = $('farmPets');
+  if (!layer) return;
+  const list = farmPetList();
+  const sig = list.map((p) => `${p.id}:${p.kind}:${p.name}:${p.stage}:${p.hungry}`).join('|');
+  if (sig === farm.sig) return;
+  farm.sig = sig;
+  const old = new Map(farm.walkers.map((w) => [w.id, w])), H = farmLayout().H;
+  layer.innerHTML = '';
+  farm.walkers = list.map((p) => {
+    const el = document.createElement('button');
+    el.type = 'button'; el.className = 'farm-pet'; el.setAttribute('aria-label', `${p.name} (누르면 한마디)`);
+    el.style.width = `${((FARM_PET_W[p.stage] || 44) / FW) * 100}%`;
+    el.innerHTML = '<div class="fp-in"><div class="fp-bob"><img alt=""></div><span class="fp-name"></span></div>';
+    el.querySelector('img').src = farmPetImg(p.kind, p.hungry);
+    el.querySelector('.fp-name').textContent = p.name;
+    const prev = old.get(p.id);
+    const w = prev ? Object.assign(prev, { p, el, img: el.querySelector('img') })
+      : { id: p.id, p, el, img: el.querySelector('img'), x: frand(30, FW - 30), y: frand(FTOP + 24, H - 8), wait: frand(0, 2), face: 1 };
+    if (!prev) farmTarget(w);
+    el.addEventListener('click', () => farmPetSay(w));
+    layer.appendChild(el);
+    return w;
+  });
+  farmPlace(); farmKick();
+}
+function farmPetSay(w) {
+  const lines = w.p.hungry ? ['배고파… 🦴', '간식 주러 와 줘 🥺']
+    : w.p.cur ? ['포도 냄새 좋아 🍇', '여기 우리 밭이지? 🐾', '산책 최고 🌿', farm.data.vines.length ? `포도나무 ${farm.data.vines.length}그루!` : '나무 심어 줘 🌱']
+    : ['여기 사는 게 좋아 🍇', '놀러 와 줘서 고마워 💜'];
+  const old = w.el.querySelector('.fp-say');
+  if (old) old.remove();
+  const s = document.createElement('span'); s.className = 'fp-say'; s.textContent = pickOne(lines);
+  w.el.querySelector('.fp-in').appendChild(s);
+  w.wait = Math.max(w.wait, 1.8);
+  clearTimeout(w.sayT); w.sayT = setTimeout(() => s.remove(), 2200);
+  farmPlace();
+}
+function farmPlace() {
+  const F = $('farmField');
+  if (!F || !farm.walkers.length) return;
+  const k = F.clientWidth / FW, H = farmLayout().H;
+  if (!k) return;
+  const still = reduceMotion();
+  farm.walkers.forEach((w) => {
+    w.y = Math.min(w.y, H - 4);
+    w.el.style.transform = `translate(${w.x * k}px, ${w.y * k}px)`;
+    w.el.style.zIndex = String(Math.round(w.y));
+    w.img.style.transform = `scaleX(${w.face})`;
+    w.el.classList.toggle('walking', !still && w.wait <= 0);
+  });
+}
+const farmActive = () => farm.tab === 'farm' && farm.visible && !document.hidden && farm.walkers.length > 0 && !reduceMotion();
+function farmKick() {
+  if (farmActive() && !farm.raf) { farm.last = 0; farm.raf = requestAnimationFrame(farmTick); }
+  else farmPlace();
+}
+function farmTick(t) {
+  farm.raf = 0;
+  if (!farmActive()) { farmPlace(); return; }
+  const dt = farm.last ? Math.min(0.05, (t - farm.last) / 1000) : 0;
+  farm.last = t;
+  farm.walkers.forEach((w) => {
+    if (w.wait > 0) { w.wait -= dt; return; }
+    const dx = w.tx - w.x, dy = w.ty - w.y, dist = Math.hypot(dx, dy);
+    if (dist < 1.5) { w.wait = frand(1, 3.5) * (w.p.hungry ? 2 : 1); farmTarget(w); return; }
+    const s = Math.min(dist, w.speed * dt);
+    w.x += (dx / dist) * s; w.y += (dy / dist) * s;
+    if (Math.abs(dx) > 2) w.face = dx < 0 ? -1 : 1;
+  });
+  farmPlace();
+  farm.raf = requestAnimationFrame(farmTick);
+}
+
+if ($('grapeFarm')) {
+  document.querySelectorAll('#grapeTabs [role="tab"]').forEach((b) => b.addEventListener('click', () => setGrapeTab(b.dataset.tab)));
 }
 
 /* ====================== 🎮 놀이 (통나무 타기 · 공 받기) ====================== */

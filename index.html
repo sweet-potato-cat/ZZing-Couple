@@ -385,7 +385,39 @@
   .game-rec{margin:10px 0 0;font-size:.92rem;color:#555;white-space:pre-line}
   @media (prefers-reduced-motion: reduce){ .pet-pet svg,.dg-tail,.pet-heart{animation:none!important} }
 
-  /* ===== 🍇 우리 포도밭 ===== */
+  /* ===== 🌿 포도밭 가꾸기 (탭 + 밭 + 산책하는 펫) ===== */
+  .grape-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 10px}
+  .grape-tabs button{position:relative;border:2px solid var(--ink);border-radius:999px;background:var(--paper);color:var(--ink);font-family:var(--hand);font-size:.92rem;padding:2px 9px 4px;cursor:pointer;white-space:nowrap}
+  .grape-tabs button[aria-selected="true"]{background:#EDE4FA;box-shadow:0 2px 0 var(--ink)}
+  .grape-tabs button[data-tab="farm"][aria-selected="true"]{background:#DDF0D9}
+  .tab-dot{position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:#E8696A;border:2px solid var(--paper)}
+  .farm-field{position:relative;border:2px solid var(--ink);border-radius:16px;overflow:hidden;background:#CFE8C0;margin-bottom:8px}
+  #farmSvg{display:block;width:100%;height:auto}
+  .farm-pets{position:absolute;inset:0;pointer-events:none}
+  .farm-pet{position:absolute;left:0;top:0;border:0;background:none;padding:0;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;will-change:transform}
+  .fp-in{position:relative;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center}
+  .fp-bob{width:100%;transform-origin:50% 100%}
+  .fp-bob img{width:100%;height:auto;display:block;transition:transform .2s}
+  .farm-pet.walking .fp-bob{animation:fpwalk .3s ease-in-out infinite alternate}
+  @keyframes fpwalk{to{transform:translateY(-7%) rotate(3deg)}}
+  .fp-name{font-family:var(--hand);font-size:.78rem;line-height:1.1;background:rgba(255,255,255,.85);border-radius:6px;padding:0 4px;white-space:nowrap;color:var(--ink)}
+  .fp-say{position:absolute;bottom:100%;left:50%;transform:translate(-50%,-4px);background:var(--paper);border:2px solid var(--ink);border-radius:10px;padding:0 8px 2px;font-family:var(--hand);font-size:.95rem;white-space:nowrap;color:var(--ink);animation:fpsay .18s ease-out}
+  @keyframes fpsay{from{opacity:0}}
+  .vine{cursor:pointer}
+  .vine.pop{transform-box:fill-box;transform-origin:50% 100%;animation:vgrow .6s ease-out}
+  @keyframes vgrow{from{transform:scale(.2);opacity:.3}}
+  .vine.sel .vb{stroke:#E8696A;stroke-width:2.4}
+  .plot.can{cursor:pointer}
+  .plot.can .pm{animation:plotpulse 1.4s ease-in-out infinite}
+  @keyframes plotpulse{50%{opacity:.4}}
+  .vine:focus,.plot:focus{outline:none}
+  .vine:focus-visible .vb,.plot:focus-visible ellipse{stroke:#E8696A;stroke-width:2.4}
+  .farm-plant{margin:4px 0 10px}
+  .farm-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:2px dotted #ddd;font-size:.98rem}
+  .farm-row .btn{flex:none;font-size:1.05rem;padding:3px 12px}
+  .farm-row .btn[disabled]{opacity:.5}
+  @media (prefers-reduced-motion: reduce){ .farm-pet .fp-bob,.vine.pop,.plot.can .pm{animation:none!important} }
+  /* ===== 🍇 포도 만들기 (송이) ===== */
   .grape-who{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .grape-who button{border:2px solid var(--ink);border-radius:999px;background:var(--paper);cursor:pointer;font-family:var(--hand);font-size:1.12rem;padding:4px 6px 6px;color:var(--ink)}
   .grape-who button small{font-size:.9rem;color:#777}
@@ -1022,9 +1054,14 @@
     </div>
   </section>
 
-  <section data-nav="포도밭" data-sec="grape" class="scene" aria-label="우리 포도밭">
+  <section data-nav="포도 심기" data-sec="grape" class="scene" aria-label="포도 심기">
     <div class="panel" id="grapeBox">
-      <h2>우리 포도밭</h2>
+      <div class="grape-tabs" id="grapeTabs" role="tablist" aria-label="포도 심기 메뉴">
+        <button type="button" role="tab" data-tab="make" aria-selected="true">🍇 포도 만들기</button>
+        <button type="button" role="tab" data-tab="farm" aria-selected="false">🌿 포도밭 가꾸기<i class="tab-dot" id="farmDot" hidden></i></button>
+      </div>
+      <h2>포도 심기</h2>
+      <div id="grapeMake">
       <p class="sub" id="grapeSub">불러오는 중…</p>
       <p class="status" id="grapeStatus"></p>
       <div class="grape-who" id="grapeWho" role="group" aria-label="누구 포도송이">
@@ -1049,6 +1086,19 @@
 
       <details class="grape-fold"><summary id="grapeAskSum">🌱 익어가는 부탁</summary><div id="grapeAsks"></div></details>
       <details class="grape-fold"><summary>🎟️ 소원권</summary><div id="grapeWishes"></div></details>
+      </div>
+
+      <div id="grapeFarm" hidden>
+        <p class="sub" id="farmSub">불러오는 중…</p>
+        <p class="status" id="farmStatus"></p>
+        <div class="farm-field" id="farmField">
+          <svg id="farmSvg" viewBox="0 0 320 174" role="group" aria-label="우리 포도밭"></svg>
+          <div class="farm-pets" id="farmPets"></div>
+        </div>
+        <div class="grape-msg empty-msg" id="farmMsg" aria-live="polite"></div>
+        <div class="farm-plant" id="farmPlant"></div>
+        <p class="grape-guide">🍇 송이를 다 채우면 🎟️ 소원권도 받고, 그 송이를 밭에 심을 수 있어 · 빈 자리(+)를 눌러서 골라 심어도 돼</p>
+      </div>
     </div>
   </section>
 
@@ -1201,6 +1251,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=run1"></script>
+<script type="module" src="app.js?v=farm1"></script>
 </body>
 </html>
