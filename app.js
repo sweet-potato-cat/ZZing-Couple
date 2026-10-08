@@ -3,6 +3,7 @@ import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
 import { BallGame } from './games/ballcatch.js?v=2';
 import { HurdleGame } from './games/hurdle.js?v=1';
+import { SortGame } from './games/sort.js?v=2';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2867,8 +2868,39 @@ const GAMES = {
     exp: (m) => Math.min(10, Math.max(1, Math.round(m / 80))),   // 80m마다 ⭐1, 최대 10
     fail: '꽈당! 🐶',
   },
+  sort: {
+    title: '🐻🐰 곰토 나누기', Cls: SortGame, ctrl: 'gameCtrlSort', load: sortAssets,
+    help: '맨 아래 동그라미 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶! 20초·40초마다 표정이 늘어나. 틀리거나 빨간 선을 넘으면 ♥ 하나',
+    round: (v) => Math.round(v), fmt: (v) => `${v}점`,
+    exp: (s) => Math.min(10, Math.max(1, Math.round(s / 20))),   // 20점마다 ⭐1, 최대 10
+    fail: '끝! 🐾',
+  },
 };
 const gm = { key: null, game: null, imgs: null, playing: false };
+
+// 🐻🐰 곰토 나누기 그림: 이모티콘 중 *_bear.png / *_rab.png (배경 = 사이트 배경 3컷 만화)
+//   앞에서부터 차례로 등장: 0초 1개씩 → 20초 2개씩 → 40초 3개씩 (games/sort.js 의 STAGES)
+//   등장 순서는 SORT_ORDER (없는 파일은 건너뛰고, 목록에 없는 새 이모티콘은 맨 뒤에)
+const SORT_ORDER = {
+  bear: ['happy_bear.png', 'best_bear.png', 'love_bear.png'],   // 싱나 → 최고! → 사랑해
+  bunny: ['hello_rab.png', 'hehe_rab.png', 'kiss_rab.png'],     // 여보세용? → 히히 → 뽀뽀할래?
+};
+let sortAssetsP = null;
+function sortAssets() {
+  if (sortAssetsP) return sortAssetsP;
+  const load = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+  const first = (arr, pref) => [...pref.filter((f) => arr.includes(f)), ...arr.filter((f) => !pref.includes(f))];
+  sortAssetsP = (async () => {
+    let files = [];
+    try { files = (await (await fetch('assets/emoticon/list.json', { cache: 'no-cache' })).json()).map((x) => x.file); } catch {}
+    const bear = first(files.filter((f) => /_bear\.png$/.test(f)), SORT_ORDER.bear).slice(0, 3);
+    const bunny = first(files.filter((f) => /_rab\.png$/.test(f)), SORT_ORDER.bunny).slice(0, 3);
+    const imgs = async (arr, fb) => (await Promise.all((arr.length ? arr : [fb]).map((f) => load('assets/emoticon/' + f)))).filter(Boolean);
+    const [b, r, bg] = await Promise.all([imgs(bear, 'happy_bear.png'), imgs(bunny, 'hello_rab.png'), load('assets/comic.jpg')]);
+    return { bear: b, bunny: r, bg };
+  })();
+  return sortAssetsP;
+}
 
 // 키우기 화면의 강아지 SVG → 게임용 그림 2장 (웃는 얼굴 / 놀란 얼굴)
 // 나중에 직접 그린 그림(PNG/SVG 동작별)이 생기면 여기서 그 파일들을 불러오면 돼
@@ -2931,7 +2963,9 @@ async function openGame(key) {
   if (!gm.imgs) gm.imgs = await dogImages();
   if (gm.game) gm.game.destroy();
   const them = partnerOf(getMe());
-  gm.game = new G.Cls($('gameCanvas'), gm.imgs, { thrower: them ? WHO[them].icon : '🐰' });
+  const extra = G.load ? await G.load() : {};
+  if (gm.key !== key || $('gameSheet').hidden) return;   // 그림 불러오는 동안 닫거나 다른 게임을 눌렀으면 그만
+  gm.game = new G.Cls($('gameCanvas'), { ...gm.imgs, ...extra }, { thrower: them ? WHO[them].icon : '🐰' });
   gm.game.resize(); gm.game.reset(); gm.game.draw();
   gameScreen('ready');
 }
@@ -2948,7 +2982,7 @@ async function startGame() {
   gm.playing = false;
   if ($('gameSheet').hidden || gm.game !== game) return;
   const res = await finishGame(key, GAMES[key].round(score));
-  if (key === 'ball' && game.maxCombo >= 2) res.extra = `최대 ${game.maxCombo} 콤보 🔥`;
+  if ((key === 'ball' || key === 'sort') && game.maxCombo >= 2) res.extra = `최대 ${game.maxCombo} 콤보 🔥`;
   gameScreen('over', res);
   renderGameRec();
 }
@@ -2985,12 +3019,15 @@ if ($('gameSheet')) {
   $('gameLogBtn').addEventListener('click', () => openGame('log'));
   $('gameBallBtn').addEventListener('click', () => openGame('ball'));
   $('gameRunBtn').addEventListener('click', () => openGame('run'));
+  $('gameSortBtn').addEventListener('click', () => openGame('sort'));
   $('gameClose').addEventListener('click', closeGame);
   // 터치 반응이 늦으면 억울하니까 click 말고 pointerdown
   const on = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); if (gm.game) fn(gm.game); });
   on('gameBack', (g) => g.push(-1));
   on('gameFwd', (g) => g.push(+1));
   on('gameCatch', (g) => g.tap());
+  on('gameSortL', (g) => g.pick(-1));
+  on('gameSortR', (g) => g.pick(+1));
   // 허들: 점프는 누르는 동안 더 높이, 숙이기는 누르고 있는 동안만
   const hold = (id, down, up) => {
     const el = $(id);
@@ -3005,8 +3042,9 @@ if ($('gameSheet')) {
     if (!gm.game) return;
     if (gm.key === 'ball') { gm.game.tap(); return; }
     if (gm.key === 'run') { gm.game.jump(); return; }   // 화면 누르기 = 점프
-    const r = e.currentTarget.getBoundingClientRect();
-    gm.game.push(e.clientX - r.left < r.width / 2 ? -1 : +1);
+    const r = e.currentTarget.getBoundingClientRect(), side = e.clientX - r.left < r.width / 2 ? -1 : +1;
+    if (gm.key === 'sort') { gm.game.pick(side); return; }   // 화면 왼쪽 = 🐰, 오른쪽 = 🐻
+    gm.game.push(side);
   });
   document.addEventListener('keydown', (e) => {
     if ($('gameSheet').hidden || !gm.game) return;
@@ -3016,6 +3054,7 @@ if ($('gameSheet')) {
     else if (gm.key === 'ball' && (e.key === ' ' || e.key === 'ArrowUp') && $('gameOver').hidden) { e.preventDefault(); if (!e.repeat) gm.game.tap(); }
     else if (gm.key === 'run' && (e.key === ' ' || e.key === 'ArrowUp') && $('gameOver').hidden) { e.preventDefault(); if (!e.repeat) gm.game.jump(); }
     else if (gm.key === 'run' && e.key === 'ArrowDown') { e.preventDefault(); gm.game.duck(true); }
+    else if (gm.key === 'sort' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('gameOver').hidden) { e.preventDefault(); if (!e.repeat) gm.game.pick(e.key === 'ArrowLeft' ? -1 : +1); }
   });
   document.addEventListener('keyup', (e) => {
     if ($('gameSheet').hidden || !gm.game || gm.key !== 'run') return;

@@ -381,6 +381,7 @@
   .game-ctrl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .game-ctrl.one{grid-template-columns:1fr}
   .game-ctrl[hidden]{display:none}
+  .game-ctrl .btn.bunny{background:#FDE7EA}
   .game-ctrl .btn{font-size:1.45rem;padding:14px 8px;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   .game-rec{margin:10px 0 0;font-size:.92rem;color:#555;white-space:pre-line}
   @media (prefers-reduced-motion: reduce){ .pet-pet svg,.dg-tail,.pet-heart{animation:none!important} }
@@ -1049,7 +1050,7 @@
         </div>
         <details class="pet-earn"><summary>🦴 간식은 어떻게 생겨?</summary><ul id="petEarn"></ul></details>
         <ul class="pet-log" id="petLog" aria-label="최근 돌본 기록"></ul>
-        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" class="on" id="gameBallBtn">⚾ 공 받기</button><button type="button" class="on" id="gameRunBtn">🏃 허들 넘기</button></div>
+        <div class="pet-games"><span>🎮 놀이</span><button type="button" class="on" id="gameLogBtn">🪵 통나무 타기</button><button type="button" class="on" id="gameBallBtn">⚾ 공 받기</button><button type="button" class="on" id="gameRunBtn">🏃 허들 넘기</button><button type="button" class="on" id="gameSortBtn">🐻🐰 곰토 나누기</button></div>
       </div>
     </div>
   </section>
@@ -1170,6 +1171,10 @@
       <button class="btn green" id="gameJump" type="button" aria-label="점프 (길게 누르면 더 높이)">⬆ 점프</button>
       <button class="btn" id="gameDuck" type="button" aria-label="숙이기 (누르고 있는 동안)">⬇ 숙이기</button>
     </div>
+    <div class="game-ctrl" id="gameCtrlSort" hidden>
+      <button class="btn bunny" id="gameSortL" type="button" aria-label="토끼찡 (왼쪽)">◀ 🐰 토끼찡</button>
+      <button class="btn" id="gameSortR" type="button" aria-label="곰돌찡 (오른쪽)">곰돌찡 🐻 ▶</button>
+    </div>
     <div class="game-ctrl one" id="gameCtrlBall" hidden>
       <button class="btn green" id="gameCatch" type="button" aria-label="공 잡기">🐾 잡아!</button>
     </div>
@@ -1251,6 +1256,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=farm1"></script>
+<script type="module" src="app.js?v=sort2"></script>
 </body>
 </html>
