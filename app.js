@@ -3,7 +3,7 @@ import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
 import { BallGame } from './games/ballcatch.js?v=2';
 import { HurdleGame } from './games/hurdle.js?v=1';
-import { SortGame } from './games/sort.js?v=3';
+import { SortGame } from './games/sort.js?v=4';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};

@@ -2,7 +2,7 @@
 //   맨 아래(지금 차례, 동그라미 친) 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶
 //   (아래 버튼 / 화면 왼쪽·오른쪽 터치 / 키보드 ←·→)
 //   틀리거나, 못 누르고 빨간 선을 넘으면 ♥ 하나. ♥ 3개 다 잃으면 끝
-//   빨리 고르면 줄이 쭉 내려와서 바로 다음 친구가 와 (기다릴 필요 없음)
+//   줄은 늘 같은 속도로 내려와 (빨리 골라도 쑥 당겨지지 않음 → 어지럽지 않게). 아직 화면에 안 보이는 친구는 못 골라
 //   맞히면 +1, 10콤보부터 x2, 20콤보부터 x3. 맞힐수록 빨라져
 //   이모티콘 종류는 시간에 따라 늘어나: 처음 2종(🐰1·🐻1) → 20초 4종 → 40초 6종 (STAGES). 종류마다 이모티콘 하나로 고정
 //   😈 30초부터 함정 "시러"(곰돌찡)가 섞여: 시러는 반대쪽(◀ 왼쪽)으로! 처음 나올 땐 "반대로!" 표시
@@ -20,6 +20,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const ease = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const MAX_RUN = 4;                                              // 같은 친구가 연속으로 최대 몇 번
 const intervalOf = (n) => Math.max(0.34, 0.95 - n * 0.012);     // 한 칸 내려오는 시간(초): 맞힐수록 짧아짐 (50개쯤 최고 속도)
+const BG_FADE = 0.8;                                            // 배경 만화 흐리게 (0 = 그대로, 1 = 안 보임)
 const ready = (img) => img && img.complete && img.naturalWidth > 0;
 
 export class SortGame {
@@ -194,9 +195,7 @@ export class SortGame {
     }
     // 속도는 부드럽게 따라가 (갑자기 휙 빨라지지 않게)
     this.rate += (1 / intervalOf(this.sorted) - this.rate) * Math.min(1, dt * 1.5);
-    // 빨리 골라서 맨 아래가 비면 줄이 쭉 내려와서 채워 (기다리지 않게). 압박은 기본 속도(rate)가 담당
-    const lead = this.items[0] ? this.items[0].d : 0, catchUp = Math.max(0, lead - 1.4) * 7;
-    for (const it of this.items) it.d -= (this.rate + catchUp) * dt;
+    for (const it of this.items) it.d -= this.rate * dt;   // 늘 같은 속도로 (빨리 골라도 쑥 당기지 않음)
     const first = this.items[0];
     if (first && first.d <= 0) {   // 못 누르고 선을 넘음 → 아래로 툭 떨어짐
       this.items.shift(); this.face(first);
@@ -227,7 +226,7 @@ export class SortGame {
     if (ready(bg)) {
       const s = Math.max(W / bg.naturalWidth, H / bg.naturalHeight), bw = bg.naturalWidth * s, bh = bg.naturalHeight * s;
       x.drawImage(bg, (W - bw) / 2, (H - bh) / 2, bw, bh);
-      x.fillStyle = 'rgba(255,255,255,.62)'; x.fillRect(-10, 0, W + 20, H);
+      x.fillStyle = `rgba(255,255,255,${BG_FADE})`; x.fillRect(-10, 0, W + 20, H);
     }
     // 왼쪽 = 토끼찡 / 오른쪽 = 곰돌찡 바닥 색 (배경 만화랑 같은 방향)
     const S = this.S, ly = this.lineY, cx = W / 2;
