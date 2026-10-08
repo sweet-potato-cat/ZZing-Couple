@@ -5,6 +5,8 @@
 //   빨리 고르면 줄이 쭉 내려와서 바로 다음 친구가 와 (기다릴 필요 없음)
 //   맞히면 +1, 10콤보부터 x2, 20콤보부터 x3. 맞힐수록 빨라져
 //   이모티콘 종류는 시간에 따라 늘어나: 처음 2종(🐰1·🐻1) → 20초 4종 → 40초 6종 (STAGES). 종류마다 이모티콘 하나로 고정
+//   😈 30초부터 함정 "시러"(곰돌찡)가 섞여: 시러는 반대쪽(◀ 왼쪽)으로! 처음 나올 땐 "반대로!" 표시
+//   🔀 60초부터 몇 초마다 위쪽 친구들(최대 4명)이 부르르 떨다가 순서가 바뀌어 (지금 차례 + 선에서 2칸 안쪽은 안 건드림)
 // 쓰는 법: const g = new SortGame(canvas, { happy, scared, bear: [img…], bunny: [img…], bg });
 //          const score = await g.start();  g.pick(-1 | +1)
 // 그림: bear/bunny 배열 앞에서부터 차례로 쓰여 (순서는 app.js 의 sortAssets 에서 정해)
@@ -12,6 +14,10 @@
 const HAND = '"Gaegu","Gowun Dodum",sans-serif';
 const STAGES = [[0, 1], [20, 2], [40, 3]];                      // [몇 초부터, 캐릭터당 이모티콘 수] → 2종 / 4종 / 6종
 const SIDE = { bunny: -1, bear: 1 };                            // 토끼찡 = 왼쪽, 곰돌찡 = 오른쪽
+const TRAP_AT = 30, TRAP_P = 0.3;                               // 함정 "시러": 몇 초부터, 곰돌찡 중 몇 % (전체의 약 15%)
+const SHUF_AT = 60, SHUF_N = 4, SHUF_WARN = 0.45, SHUF_MOVE = 0.4;   // 순서 바꾸기: 몇 초부터, 몇 명, 흔들기·이동 시간(초)
+const rand = (a, b) => a + Math.random() * (b - a);
+const ease = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const MAX_RUN = 4;                                              // 같은 친구가 연속으로 최대 몇 번
 const intervalOf = (n) => Math.max(0.34, 0.95 - n * 0.012);     // 한 칸 내려오는 시간(초): 맞힐수록 짧아짐 (50개쯤 최고 속도)
 const ready = (img) => img && img.complete && img.naturalWidth > 0;
@@ -38,6 +44,7 @@ export class SortGame {
     this.rate = 1 / intervalOf(0);
     this.shakeT = 0; this.sadT = 0; this.happyT = 0; this.endT = 0; this.count = 0;
     this.lastKind = null; this.run = 0; this.stage = 0;
+    this.trapSeen = false; this.shufWarn = null; this.nextShuf = SHUF_AT; this.shufSaid = false;
     this.fill();
   }
   resize() {
@@ -49,7 +56,7 @@ export class SortGame {
     this.x.setTransform(d, 0, 0, d, 0, 0);
   }
   // 화면 배치 (크기 바뀌어도 맞게). 친구 위치는 "선에서 몇 칸 위(d)"로 저장 → 화면 크기와 상관없음
-  get S() { return Math.max(56, Math.min((this.W || 360) * 0.27, (this.H || 500) * 0.15, 110)); }
+  get S() { return Math.max(56, Math.min((this.W || 360) * 0.25, (this.H || 500) * 0.135, 104)); }   // 한 화면에 5명쯤 보이게
   get gap() { return this.S * 1.12; }
   get lineY() { return (this.H || 500) * 0.8; }
   yOf(it) { return this.lineY - it.d * this.gap; }
@@ -88,6 +95,10 @@ export class SortGame {
     if (it.v === null) {
       const n = Math.max(1, Math.min(STAGES[this.stage][1], (this.imgs[it.kind] || []).length));
       it.v = Math.floor(Math.random() * n);
+      if (it.kind === 'bear' && this.t >= TRAP_AT && this.imgs.trap && Math.random() < TRAP_P) {
+        it.trap = true;
+        if (!this.trapSeen) { this.trapSeen = true; it.hint = true; this.fxText('😈 "시러"는 반대로!', this.W / 2, this.H * 0.28, '#E8696A', 1.3); }
+      }
     }
     return it.v;
   }
@@ -97,7 +108,7 @@ export class SortGame {
     if (!this.items[0] || this.yOf(this.items[0]) < this.S * 0.5) return;   // 아직 화면에 안 내려온 친구는 못 골라
     const it = this.items.shift();
     this.face(it);
-    const want = SIDE[it.kind], ok = side === want, y = this.yOf(it);
+    const want = it.trap ? -SIDE[it.kind] : SIDE[it.kind], ok = side === want, y = this.yOf(it);
     this.flying.push({ ...it, x: this.W / 2, y, vx: side * this.W * 1.5, vy: -this.H * 0.45, rot: 0, vr: side * 7, t: 0, ok });
     if (ok) {
       this.sorted++; this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
@@ -115,6 +126,34 @@ export class SortGame {
     this.lives--; this.combo = 0; this.sadT = 0.7; this.shakeT = 0.3;
     this.fxText(text, this.W / 2, Math.max(this.H * 0.18, y - this.S * 0.7), '#4A90C8', 1.15);
     if (this.lives <= 0) { this.state = 'end'; this.endT = 0; }
+  }
+  // 순서 바꿀 친구들: 화면에 보이는 위쪽 친구 최대 SHUF_N명
+  //   지금 차례(맨 아래)랑 선에서 2칸 안쪽 친구는 빼서 억울하지 않게 (바뀌는 동안 선까지 못 오게)
+  shuffleCands() {
+    const vis = this.items.slice(1).filter((it) => it.d >= 2 && this.yOf(it) > this.S * 0.45);
+    const list = vis.slice(-SHUF_N);
+    if (list.length < 2) return null;
+    list.forEach((it) => this.face(it));
+    const sig = (it) => `${it.kind}:${it.trap ? 't' : it.v}`;
+    if (new Set(list.map(sig)).size < 2) return null;   // 다 똑같으면 바꿔도 티가 안 나
+    return list;
+  }
+  doShuffle(list) {
+    list = list.filter((it) => this.items.indexOf(it) >= 1 && it.d >= 1.3);   // 그사이 많이 내려왔으면 빼기
+    if (list.length < 2) return;
+    const sig = (it) => `${it.kind}:${it.trap ? 't' : it.v}`;
+    const before = list.map(sig).join('|');
+    let perm = list.map((_, i) => i);
+    for (let k = 0; k < 12; k++) {   // 겉보기로 실제로 바뀌는 순서가 나올 때까지
+      perm.sort(() => Math.random() - 0.5);
+      if (perm.map((j) => sig(list[j])).join('|') !== before) break;
+    }
+    const content = list.map((it) => ({ kind: it.kind, v: it.v, trap: !!it.trap, hint: !!it.hint, d: it.d }));
+    list.forEach((it, i) => {
+      const c = content[perm[i]];
+      it.kind = c.kind; it.v = c.v; it.trap = c.trap; it.hint = c.hint;
+      it.sw = c.d === it.d ? null : { dd: c.d - it.d, t: 0, dir: i % 2 ? 1 : -1 };
+    });
   }
   fxText(text, x, y, color, scale = 1) { this.fx.push({ text, x, y, color, scale, t: 0 }); }
 
@@ -141,6 +180,18 @@ export class SortGame {
     // 20초·40초: 이모티콘 종류 늘리기
     const st = STAGES.reduce((k, [at], i) => (this.t >= at ? i : k), 0);
     if (st > this.stage) { this.stage = st; this.fxText(`🎭 이제 ${STAGES[st][1] * 2}종류!`, this.W / 2, this.H * 0.28, '#4A90C8', 1.3); }
+    // 60초부터: 위쪽 친구들 순서 바꾸기 (흔들기로 예고 → 자리 바꾸기)
+    for (const it of this.items) if (it.sw) { it.sw.t += dt; if (it.sw.t >= SHUF_MOVE) it.sw = null; }
+    if (this.shufWarn) {
+      this.shufWarn.t -= dt;
+      if (this.shufWarn.t <= 0) { this.doShuffle(this.shufWarn.list); this.shufWarn = null; this.nextShuf = this.t + rand(3.2, 4.8); }
+    } else if (this.t >= this.nextShuf) {
+      const list = this.shuffleCands();
+      if (list) {
+        this.shufWarn = { list, t: SHUF_WARN };
+        if (!this.shufSaid) { this.shufSaid = true; this.fxText('🔀 이제 순서가 바뀌어!', this.W / 2, this.H * 0.28, '#4A90C8', 1.3); }
+      } else this.nextShuf = this.t + 0.5;
+    }
     // 속도는 부드럽게 따라가 (갑자기 휙 빨라지지 않게)
     this.rate += (1 / intervalOf(this.sorted) - this.rate) * Math.min(1, dt * 1.5);
     // 빨리 골라서 맨 아래가 비면 줄이 쭉 내려와서 채워 (기다리지 않게). 압박은 기본 속도(rate)가 담당
@@ -156,7 +207,8 @@ export class SortGame {
   }
 
   drawChar(it, cx, cy, size) {
-    const x = this.x, img = (this.imgs[it.kind] || [])[this.face(it)] || (this.imgs[it.kind] || [])[0];
+    const v = this.face(it), x = this.x;
+    const img = it.trap ? this.imgs.trap : (this.imgs[it.kind] || [])[v] || (this.imgs[it.kind] || [])[0];
     if (ready(img)) { x.drawImage(img, cx - size / 2, cy - size / 2, size, size); return; }
     x.font = `${Math.round(size * 0.7)}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(it.kind === 'bear' ? '🐻' : '🐰', cx, cy);
@@ -192,17 +244,28 @@ export class SortGame {
     x.beginPath(); x.moveTo(0, ly); x.lineTo(W, ly); x.stroke(); x.setLineDash([]);
 
     // 내려오는 친구들 (위에서부터) + 지금 차례 동그라미
+    const warn = this.shufWarn ? new Set(this.shufWarn.list) : null;
     for (let i = this.items.length - 1; i >= 0; i--) {
-      const it = this.items[i], y = this.yOf(it);
+      const it = this.items[i];
+      let y = this.yOf(it), ix = cx;
+      if (it.sw) {   // 🔀 자리 바꾸는 중: 원래 자리에서 옆으로 휘어서 새 자리로
+        const u = Math.min(1, it.sw.t / SHUF_MOVE);
+        y -= it.sw.dd * this.gap * (1 - ease(u));
+        ix += Math.sin(u * Math.PI) * S * 0.75 * it.sw.dir;
+      } else if (warn && warn.has(it)) ix += Math.sin(this.t * 45) * 4;   // 곧 바뀜! 부르르
       if (y < -S) continue;
       if (i === 0 && this.state !== 'idle') {
         const danger = it.d < 0.7;
         x.fillStyle = danger ? 'rgba(232,105,106,.18)' : 'rgba(255,179,71,.2)';
         x.strokeStyle = danger ? '#E8696A' : '#FFB347'; x.lineWidth = danger ? 4 : 3;
-        x.beginPath(); x.arc(cx, y, S * 0.6, 0, 7); x.fill(); x.stroke();
-        this.drawChar(it, cx, y, S * 1.06);
+        x.beginPath(); x.arc(ix, y, S * 0.6, 0, 7); x.fill(); x.stroke();
+        this.drawChar(it, ix, y, S * 1.06);
       } else {
-        x.globalAlpha = 0.92; this.drawChar(it, cx, y, S * 0.9); x.globalAlpha = 1;
+        x.globalAlpha = 0.92; this.drawChar(it, ix, y, S * 0.9); x.globalAlpha = 1;
+      }
+      if (it.hint && it.trap && y > 70) {   // 처음 나온 시러: 반대로 보내라고 알려 주기 (점수판에 안 겹치게)
+        x.fillStyle = '#E8696A'; x.font = `700 ${Math.round(Math.max(16, S * 0.22))}px ${HAND}`; x.textAlign = 'left';
+        x.fillText('◀ 반대로!', ix + S * 0.62, y + 6);
       }
     }
     // 날아가는 친구 (맞으면 그쪽으로 휙, 틀리면 ✖)

@@ -3,7 +3,7 @@ import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
 import { BallGame } from './games/ballcatch.js?v=2';
 import { HurdleGame } from './games/hurdle.js?v=1';
-import { SortGame } from './games/sort.js?v=2';
+import { SortGame } from './games/sort.js?v=3';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2870,7 +2870,7 @@ const GAMES = {
   },
   sort: {
     title: '🐻🐰 곰토 나누기', Cls: SortGame, ctrl: 'gameCtrlSort', load: sortAssets,
-    help: '맨 아래 동그라미 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶! 20초·40초마다 표정이 늘어나. 틀리거나 빨간 선을 넘으면 ♥ 하나',
+    help: '맨 아래 동그라미 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶! 단, 😈 "시러"는 반대로! 시간이 갈수록 표정이 늘고, 60초부터는 순서가 바뀌어. 틀리거나 빨간 선을 넘으면 ♥ 하나',
     round: (v) => Math.round(v), fmt: (v) => `${v}점`,
     exp: (s) => Math.min(10, Math.max(1, Math.round(s / 20))),   // 20점마다 ⭐1, 최대 10
     fail: '끝! 🐾',
@@ -2893,11 +2893,12 @@ function sortAssets() {
   sortAssetsP = (async () => {
     let files = [];
     try { files = (await (await fetch('assets/emoticon/list.json', { cache: 'no-cache' })).json()).map((x) => x.file); } catch {}
-    const bear = first(files.filter((f) => /_bear\.png$/.test(f)), SORT_ORDER.bear).slice(0, 3);
+    const bear = first(files.filter((f) => /_bear\.png$/.test(f) && f !== 'no_bear.png'), SORT_ORDER.bear).slice(0, 3);
     const bunny = first(files.filter((f) => /_rab\.png$/.test(f)), SORT_ORDER.bunny).slice(0, 3);
     const imgs = async (arr, fb) => (await Promise.all((arr.length ? arr : [fb]).map((f) => load('assets/emoticon/' + f)))).filter(Boolean);
     const [b, r, bg] = await Promise.all([imgs(bear, 'happy_bear.png'), imgs(bunny, 'hello_rab.png'), load('assets/comic.jpg')]);
-    return { bear: b, bunny: r, bg };
+    const trap = files.includes('no_bear.png') ? await load('assets/emoticon/no_bear.png') : null;   // 😈 함정 "시러"
+    return { bear: b, bunny: r, bg, trap };
   })();
   return sortAssetsP;
 }
