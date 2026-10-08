@@ -44,6 +44,9 @@
     -webkit-font-smoothing:antialiased;
   }
   button{font:inherit;color:inherit}
+  /* iOS 두 번 탭 확대 막기: 두 번 탭 확대만 꺼지고 손가락 두 개로 확대·스크롤은 그대로 (탭 반응 지연도 없어짐)
+     게임 캔버스·점 슬라이더처럼 touch-action:none 인 곳은 더 구체적인 규칙이라 그대로 유지돼 */
+  *{touch-action:manipulation}
   :focus-visible{outline:3px dashed var(--ink);outline-offset:3px}
 
   /* ===== 잠금 화면 ===== */
