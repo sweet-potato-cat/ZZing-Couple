@@ -19,6 +19,7 @@ export class BallGame {
     this.c = canvas;
     this.x = canvas.getContext('2d');
     this.imgs = imgs || {};
+    this.sfx = opts.sfx || (() => {});   // 🔊 효과음 (app.js 가 sfx.play 를 넘겨 줘)
     this.opts = opts;
     this.state = 'idle';   // idle → count → play → end → over (pause 가능)
     this.raf = 0;
@@ -73,10 +74,15 @@ export class BallGame {
     return { x, y: this.mouthY - this.dogH * rand(0.55, 1.25) };
   }
 
+  stepCount(dt) {   // 3·2·1 카운트다운 + 삑·삑·삑·삐-
+    const c0 = Math.ceil(this.count);
+    this.count -= dt;
+    if (this.count <= 0) this.sfx('go'); else if (Math.ceil(this.count) < c0) this.sfx('tick');
+  }
   start() {
     cancelAnimationFrame(this.raf);
     this.reset(); this.resize();
-    this.state = 'count'; this.count = 3;
+    this.state = 'count'; this.count = 3; this.sfx('tick');
     this.last = performance.now();
     return new Promise((res) => { this.done = res; this.raf = requestAnimationFrame(this.loop); });
   }
@@ -98,15 +104,17 @@ export class BallGame {
     if (best && bd <= best.good) {
       best.judged = true; best.caught = true;
       const perfect = bd <= best.perfect;
+      this.sfx(perfect ? 'perfect' : 'ok');
       this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
       const pts = (perfect ? 3 : 1) * Math.min(3, 1 + Math.floor(this.combo / 10));   // 10콤보마다 x2, 20콤보부터 x3
       this.score += pts;
       this.holdT = 0.4;
       this.catches++;
+      if (this.catches === MOVE_AT || this.catches === DRIFT_AT) this.sfx('stage');
       if (this.catches === MOVE_AT) this.fxText('📍 이제 자리가 바뀌어!', this.W / 2, this.H * 0.22, '#4A90C8', 1.25);
       if (this.catches === DRIFT_AT) { this.fxText('🌀 이제 움직여!', this.W / 2, this.H * 0.22, '#4A90C8', 1.25); this.driftT0 = this.t + 0.6; }
       this.fxText(perfect ? `Perfect! +${pts}` : `Good +${pts}`, p.x, p.y - 40, perfect ? '#E8696A' : '#1f1f1f');
-      if (this.combo > 1 && this.combo % 5 === 0) this.fxText(`${this.combo} 콤보! 🔥`, this.W / 2, this.H * 0.3, '#E8696A', 1.4);
+      if (this.combo > 1 && this.combo % 5 === 0) { this.fxText(`${this.combo} 콤보! 🔥`, this.W / 2, this.H * 0.3, '#E8696A', 1.4); this.sfx('combo'); }
     } else {
       if (this.combo) this.fxText('앗! 콤보 끊김', p.x, p.y - 40, '#888');
       this.combo = 0;
@@ -136,6 +144,7 @@ export class BallGame {
       gx: lerp(side < 0 ? 0 : this.W, p.x, 0.55), spin: rand(4, 9) * side,
     };
     this.balls.push(b);
+    this.sfx('throw');
     this.throwSide = side; this.throwT = 0.3;
     const gap = Math.max(0.5, 1.55 - n * 0.025);
     this.nextThrow = gap * rand(0.8, 1.3);
@@ -174,16 +183,17 @@ export class BallGame {
     if (this.holdT > 0) this.holdT -= dt;
     if (this.sadT > 0) this.sadT -= dt;
     if (this.throwT > 0) this.throwT -= dt;
-    if (this.state === 'count') { this.count -= dt; if (this.count <= 0) this.state = 'play'; return; }
+    if (this.state === 'count') { this.stepCount(dt); if (this.count <= 0) this.state = 'play'; return; }
     if (this.state === 'end') { this.endT += dt; if (this.endT > 0.9) this.state = 'over'; return; }
     if (this.state !== 'play') return;
     this.t += dt;
     this.nextThrow -= dt;
     if (this.nextThrow <= 0) this.throwBall();
+    for (const b of this.balls) if (b.kind === 'bounce' && !b.bounced && !b.judged && (this.t - b.t0) / b.flight >= 0.55) { b.bounced = true; this.sfx('bounce'); }   // 바닥에 통
     for (const b of this.balls) {
       if (!b.judged && this.t > b.arrive + b.good) {   // 놓침
         b.judged = true; b.missed = true;
-        this.lives--; this.combo = 0; this.sadT = 0.7;
+        this.lives--; this.combo = 0; this.sadT = 0.7; this.sfx('miss');
         this.fxText('Miss 💦', this.catchP.x, this.catchP.y - 40, '#4A90C8');
       }
     }

@@ -11,10 +11,11 @@ const HAND = '"Gaegu","Gowun Dodum",sans-serif';
 const rand = (a, b) => a + Math.random() * (b - a);
 
 export class HurdleGame {
-  constructor(canvas, imgs) {
+  constructor(canvas, imgs, opts = {}) {
     this.c = canvas;
     this.x = canvas.getContext('2d');
     this.imgs = imgs || {};
+    this.sfx = opts.sfx || (() => {});   // 🔊 효과음 (app.js 가 sfx.play 를 넘겨 줘)
     this.state = 'idle';   // idle → count → play → end → over (pause 가능)
     this.raf = 0;
     this.reset();
@@ -42,10 +43,15 @@ export class HurdleGame {
   get dogH() { return Math.min(this.H * 0.17, 92); }   // 작게 (멀리 오는 장애물이 보이게)
   get dogX() { return this.W * 0.22; }
 
+  stepCount(dt) {   // 3·2·1 카운트다운 + 삑·삑·삑·삐-
+    const c0 = Math.ceil(this.count);
+    this.count -= dt;
+    if (this.count <= 0) this.sfx('go'); else if (Math.ceil(this.count) < c0) this.sfx('tick');
+  }
   start() {
     cancelAnimationFrame(this.raf);
     this.reset(); this.resize();
-    this.state = 'count'; this.count = 3;
+    this.state = 'count'; this.count = 3; this.sfx('tick');
     this.last = performance.now();
     return new Promise((res) => { this.done = res; this.raf = requestAnimationFrame(this.loop); });
   }
@@ -57,11 +63,12 @@ export class HurdleGame {
   jump() {
     if (this.state !== 'play') return;
     this.holding = true;
-    if (this.onGround && !this.ducking) { this.vy = JUMP_V; this.onGround = false; }
+    if (this.onGround && !this.ducking) { this.vy = JUMP_V; this.onGround = false; this.sfx('jump'); }
   }
   release() { this.holding = false; if (!this.onGround && this.vy > CUT_V) this.vy = CUT_V; }
   duck(on) {
     if (this.state !== 'play' && on) return;
+    if (on && !this.ducking && this.state === 'play') this.sfx('duck');
     this.ducking = on;
     if (on && !this.onGround) this.vy = Math.min(this.vy, -700);   // 공중이면 빨리 내려오기
   }
@@ -100,7 +107,7 @@ export class HurdleGame {
   }
   update(dt) {
     this.dust.forEach((p) => { p.t += dt; p.x -= this.speed * dt * 0.6; }); this.dust = this.dust.filter((p) => p.t < 0.5);
-    if (this.state === 'count') { this.count -= dt; this.scroll += 120 * dt; if (this.count <= 0) this.state = 'play'; return; }
+    if (this.state === 'count') { this.stepCount(dt); this.scroll += 120 * dt; if (this.count <= 0) this.state = 'play'; return; }
     if (this.state === 'end') {
       this.endT += dt;
       if (!this.onGround) { this.vy -= GRAV * dt; this.y = Math.max(0, this.y + this.vy * dt); if (this.y === 0) this.onGround = true; }
@@ -130,11 +137,11 @@ export class HurdleGame {
       if (o.kind === 'bird') o.x -= dx * 0.25;   // 새는 조금 더 빨리 날아와
       const ob = o.kind === 'hurdle' ? { l: o.x, r: o.x + o.w, b: 0, t: o.h } : { l: o.x + 4, r: o.x + o.w - 4, b: o.bottom, t: o.bottom + o.h };
       if (box.r > ob.l && box.l < ob.r && box.t > ob.b && box.b < ob.t) {
-        this.hit = o; this.state = 'end'; this.endT = 0; this.ducking = false;
+        this.hit = o; this.state = 'end'; this.endT = 0; this.ducking = false; this.sfx('crash');
         if (navigator.vibrate) { try { navigator.vibrate(80); } catch {} }
         return;
       }
-      if (!o.passed && o.x + o.w < box.l) { o.passed = true; if (!o.tail) this.cleared++; }
+      if (!o.passed && o.x + o.w < box.l) { o.passed = true; if (!o.tail) { this.cleared++; this.sfx('pass'); } }
     }
     this.obs = this.obs.filter((o) => o.x + o.w > -60);
   }

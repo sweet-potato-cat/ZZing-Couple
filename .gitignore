@@ -2,3 +2,5 @@
 photos_raw/
 __pycache__/
 .DS_Store
+# Claude 앱이 저장하는 미리보기 파일
+Claude outputs/

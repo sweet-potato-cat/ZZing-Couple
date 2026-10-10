@@ -489,6 +489,7 @@
   .set-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .set-head h2{margin:0}
   .set-x{font-size:1.4rem;opacity:.7}
+  #gameSound{margin-left:auto;margin-right:4px;font-size:1.25rem}
   .set-h{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:18px 0 2px;padding-top:12px;border-top:2px dotted #bbb}
   .set-h.first{border-top:0;padding-top:0;margin-top:6px}
   .set-note{margin:0 0 12px;color:#666;font-size:.9rem}
@@ -1161,7 +1162,7 @@
 <!-- ============ 🎮 놀이: 통나무 타기 ============ -->
 <div id="gameSheet" class="sheet game-sheet" role="dialog" aria-modal="true" aria-labelledby="gameTitle" hidden>
   <div class="panel sheet-panel game-panel">
-    <div class="set-head"><h2 id="gameTitle">🪵 통나무 타기</h2><button class="tool set-x" id="gameClose" type="button" aria-label="닫기">✕</button></div>
+    <div class="set-head"><h2 id="gameTitle">🪵 통나무 타기</h2><button class="tool set-x" id="gameSound" type="button" aria-label="소리 끄기">🔊</button><button class="tool set-x" id="gameClose" type="button" aria-label="닫기">✕</button></div>
     <div class="game-wrap">
       <canvas id="gameCanvas" aria-label="통나무 타기 게임 화면. 왼쪽을 누르면 뒤로, 오른쪽을 누르면 앞으로 기울여"></canvas>
       <div class="game-over" id="gameOver" hidden></div>
@@ -1259,6 +1260,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=sort6"></script>
+<script type="module" src="app.js?v=sfx1"></script>
 </body>
 </html>

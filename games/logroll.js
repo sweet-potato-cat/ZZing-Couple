@@ -9,10 +9,11 @@ const HAND = '"Gaegu","Gowun Dodum",sans-serif';
 const rand = (a, b) => a + Math.random() * (b - a);
 
 export class LogGame {
-  constructor(canvas, imgs) {
+  constructor(canvas, imgs, opts = {}) {
     this.c = canvas;
     this.x = canvas.getContext('2d');
     this.imgs = imgs || {};
+    this.sfx = opts.sfx || (() => {});   // 🔊 효과음 (app.js 가 sfx.play 를 넘겨 줘)
     this.state = 'idle';   // idle → count → play → fall → over (pause 가능)
     this.raf = 0;
     this.reset();
@@ -38,12 +39,17 @@ export class LogGame {
   }
 
   // 3·2·1 하고 시작. 넘어지면 간 거리(m)로 resolve
+  stepCount(dt) {   // 3·2·1 카운트다운 + 삑·삑·삑·삐-
+    const c0 = Math.ceil(this.count);
+    this.count -= dt;
+    if (this.count <= 0) this.sfx('go'); else if (Math.ceil(this.count) < c0) this.sfx('tick');
+  }
   start() {
     cancelAnimationFrame(this.raf);
     this.reset();
     this.resize();
     this.th = (Math.random() < 0.5 ? -1 : 1) * 0.04;
-    this.state = 'count'; this.count = 3;
+    this.state = 'count'; this.count = 3; this.sfx('tick');
     this.last = performance.now();
     return new Promise((res) => { this.done = res; this.raf = requestAnimationFrame(this.loop); });
   }
@@ -51,6 +57,7 @@ export class LogGame {
     if (this.state !== 'play') return;
     this.w += dir * PUSH;
     this.pushDir = dir; this.pushT = 0.22;
+    this.sfx('push');
   }
   pause() { if (this.state === 'play' || this.state === 'count') { this.paused = this.state; this.state = 'pause'; cancelAnimationFrame(this.raf); this.draw(); } }
   resume() { if (this.state === 'pause') { this.state = this.paused; this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); } }
@@ -68,7 +75,7 @@ export class LogGame {
   update(dt) {
     if (this.pushT > 0) this.pushT -= dt;
     if (this.state === 'count') {
-      this.count -= dt;
+      this.stepCount(dt);
       this.scroll += 60 * dt;
       if (this.count <= 0) this.state = 'play';
       return;
@@ -91,7 +98,7 @@ export class LogGame {
       this.dist += v * dt;
       this.scroll += v * 40 * dt;
       if (Math.abs(this.th) > FALL) {
-        this.state = 'fall'; this.fallT = 0;
+        this.state = 'fall'; this.fallT = 0; this.sfx('splash');
         for (let i = 0; i < 16; i++) this.splash.push({ x: 0, y: 0, vx: rand(-90, 90), vy: rand(-260, -120), r: rand(3, 7) });
       }
       return;

@@ -31,6 +31,7 @@ export class SortGame {
     this.c = canvas;
     this.x = canvas.getContext('2d');
     this.imgs = imgs || {};
+    this.sfx = opts.sfx || (() => {});   // 🔊 효과음 (app.js 가 sfx.play 를 넘겨 줘)
     this.opts = opts;
     this.trapImg = this.darken(this.imgs.trap);
     this.state = 'idle';   // idle → count → play → end → over (pause 가능)
@@ -91,16 +92,21 @@ export class SortGame {
       it.v = Math.floor(Math.random() * n);
       if (it.kind === 'bear' && this.cleared >= TRAP_AT && this.trapImg && Math.random() < TRAP_P) {
         it.trap = true;
-        if (!this.trapSeen) { this.trapSeen = true; it.hint = true; this.fxText('😈 어두운 "시러"는 반대로!', this.W / 2, this.H * 0.3, '#E8696A', 1.3); }
+        if (!this.trapSeen) { this.trapSeen = true; it.hint = true; this.sfx('stage'); this.fxText('😈 어두운 "시러"는 반대로!', this.W / 2, this.H * 0.3, '#E8696A', 1.3); }
       }
     }
     return it.v;
   }
 
+  stepCount(dt) {   // 3·2·1 카운트다운 + 삑·삑·삑·삐-
+    const c0 = Math.ceil(this.count);
+    this.count -= dt;
+    if (this.count <= 0) this.sfx('go'); else if (Math.ceil(this.count) < c0) this.sfx('tick');
+  }
   start() {
     cancelAnimationFrame(this.raf);
     this.resize(); this.reset();
-    this.state = 'count'; this.count = 3;
+    this.state = 'count'; this.count = 3; this.sfx('tick');
     this.last = performance.now();
     return new Promise((res) => { this.done = res; this.raf = requestAnimationFrame(this.loop); });
   }
@@ -118,21 +124,21 @@ export class SortGame {
     const y = this.yOfIdx(0);
     if (side !== want) {   // ❌ 친구는 그대로, 1초 벌칙
       this.t += PENALTY; this.miss++; this.combo = 0;
-      this.sadT = 0.6; this.shakeT = 0.3; it.badT = 0.35;
+      this.sadT = 0.6; this.shakeT = 0.3; it.badT = 0.35; this.sfx('bad');
       this.fxText(`+${PENALTY}초 💦`, this.W / 2, y - this.S * 0.75, '#4A90C8', 1.15);
       return;
     }
     this.items.shift();
     this.cleared++; this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);
     this.off = Math.min(2, this.off + 1);   // 줄이 한 칸 톡 내려와
-    this.happyT = 0.25;
+    this.happyT = 0.25; this.sfx('ok');
     this.flying.push({ ...it, x: this.W / 2, y, vx: side * this.W * 1.5, vy: -this.H * 0.45, rot: 0, vr: side * 7, t: 0 });
-    if (this.combo % 25 === 0) this.fxText(`${this.combo}연속! 🔥`, this.W / 2, this.H * 0.22, '#E8696A', 1.3);
+    if (this.combo % 25 === 0) { this.fxText(`${this.combo}연속! 🔥`, this.W / 2, this.H * 0.22, '#E8696A', 1.3); this.sfx('combo'); }
     // 단계 올리기 (몇 명 나눴나 기준)
     const st = STAGES.reduce((k, [at], i) => (this.cleared >= at ? i : k), 0);
-    if (st > this.stage) { this.stage = st; this.fxText(`🎭 이제 ${STAGES[st][1] * 2}종류!`, this.W / 2, this.H * 0.3, '#4A90C8', 1.3); }
-    if (this.cleared === SHUF_AT) { this.nextShuf = this.t + 1; this.fxText('🔀 이제 순서가 바뀌어!', this.W / 2, this.H * 0.3, '#4A90C8', 1.3); }
-    if (this.cleared >= SORT_TOTAL) { this.state = 'end'; this.endT = 0; this.fxText('🎉 완주!', this.W / 2, this.H * 0.4, '#E8696A', 1.8); }
+    if (st > this.stage) { this.stage = st; this.sfx('stage'); this.fxText(`🎭 이제 ${STAGES[st][1] * 2}종류!`, this.W / 2, this.H * 0.3, '#4A90C8', 1.3); }
+    if (this.cleared === SHUF_AT) { this.nextShuf = this.t + 1; this.sfx('stage'); this.fxText('🔀 이제 순서가 바뀌어!', this.W / 2, this.H * 0.3, '#4A90C8', 1.3); }
+    if (this.cleared >= SORT_TOTAL) { this.state = 'end'; this.endT = 0; this.sfx('clear'); this.fxText('🎉 완주!', this.W / 2, this.H * 0.4, '#E8696A', 1.8); }
   }
   fxText(text, x, y, color, scale = 1) { this.fx.push({ text, x, y, color, scale, t: 0 }); }
 
@@ -185,7 +191,7 @@ export class SortGame {
       if (it.badT > 0) it.badT -= dt;
       if (it.sw) { it.sw.t += dt; if (it.sw.t >= SHUF_MOVE) it.sw = null; }
     }
-    if (this.state === 'count') { this.count -= dt; if (this.count <= 0) this.state = 'play'; return; }
+    if (this.state === 'count') { this.stepCount(dt); if (this.count <= 0) this.state = 'play'; return; }
     if (this.state === 'end') { this.endT += dt; if (this.endT > 1.1) this.state = 'over'; return; }
     if (this.state !== 'play') return;
     this.t += dt;
@@ -196,7 +202,7 @@ export class SortGame {
       if (this.shufWarn.t <= 0) { this.doShuffle(this.shufWarn.list); this.shufWarn = null; this.nextShuf = this.t + rand(2.5, 4); }
     } else if (this.t >= this.nextShuf) {
       const list = this.shuffleCands();
-      if (list) this.shufWarn = { list, t: SHUF_WARN };
+      if (list) { this.shufWarn = { list, t: SHUF_WARN }; this.sfx('shuffle'); }
       else this.nextShuf = this.t + 0.5;
     }
   }

@@ -1,9 +1,10 @@
 import * as CFG from './config.js';
 import { QUESTIONS } from './questions.js?v=1';
-import { LogGame } from './games/logroll.js?v=1';
-import { BallGame } from './games/ballcatch.js?v=2';
-import { HurdleGame } from './games/hurdle.js?v=1';
-import { SortGame, SORT_TOTAL } from './games/sort.js?v=6';
+import { LogGame } from './games/logroll.js?v=2';
+import { BallGame } from './games/ballcatch.js?v=3';
+import { HurdleGame } from './games/hurdle.js?v=2';
+import { SortGame, SORT_TOTAL } from './games/sort.js?v=7';
+import { sfx } from './games/sfx.js?v=1';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2967,7 +2968,7 @@ async function openGame(key) {
   const them = partnerOf(getMe());
   const extra = G.load ? await G.load() : {};
   if (gm.key !== key || $('gameSheet').hidden) return;   // 그림 불러오는 동안 닫거나 다른 게임을 눌렀으면 그만
-  gm.game = new G.Cls($('gameCanvas'), { ...gm.imgs, ...extra }, { thrower: them ? WHO[them].icon : '🐰' });
+  gm.game = new G.Cls($('gameCanvas'), { ...gm.imgs, ...extra }, { thrower: them ? WHO[them].icon : '🐰', sfx: (n) => sfx.play(n) });
   gm.game.resize(); gm.game.reset(); gm.game.draw();
   gameScreen('ready');
 }
@@ -2977,6 +2978,7 @@ function closeGame() {
   $('gameSheet').hidden = true;
 }
 async function startGame() {
+  sfx.unlock();   // 🔊 버튼 누른 순간에 소리 장치 깨우기 (아이폰 규칙)
   $('gameOver').hidden = true;
   gm.playing = true;
   const game = gm.game, key = gm.key;
@@ -2986,6 +2988,7 @@ async function startGame() {
   const res = await finishGame(key, GAMES[key].round(score));
   if (key === 'ball' && game.maxCombo >= 2) res.extra = `최대 ${game.maxCombo} 콤보 🔥`;
   if (key === 'sort') res.extra = game.miss ? `실수 ${game.miss}번 (+${game.miss}초 벌칙)` : '실수 없이 완주! 💯';
+  if (res.best) sfx.play('win'); else if (!GAMES[key].lower) sfx.play('over');   // 신기록 빰빰빰빠- / 끝 또롱또롱 (타임어택은 완주 소리로 끝)
   gameScreen('over', res);
   renderGameRec();
 }
@@ -3026,6 +3029,10 @@ if ($('gameSheet')) {
   $('gameRunBtn').addEventListener('click', () => openGame('run'));
   $('gameSortBtn').addEventListener('click', () => openGame('sort'));
   $('gameClose').addEventListener('click', closeGame);
+  // 🔊 소리 켜기/끄기 (이 기기에 기억)
+  const soundBtn = () => { const b = $('gameSound'); b.textContent = sfx.muted ? '🔇' : '🔊'; b.setAttribute('aria-label', sfx.muted ? '소리 켜기' : '소리 끄기'); b.setAttribute('aria-pressed', String(!sfx.muted)); };
+  soundBtn();
+  $('gameSound').addEventListener('click', () => { sfx.unlock(); sfx.setMuted(!sfx.muted); soundBtn(); sfx.play('ok'); });
   // 터치 반응이 늦으면 억울하니까 click 말고 pointerdown
   const on = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); if (gm.game) fn(gm.game); });
   on('gameBack', (g) => g.push(-1));
