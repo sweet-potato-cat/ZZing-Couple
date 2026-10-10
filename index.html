@@ -47,6 +47,11 @@
   /* iOS 두 번 탭 확대 막기: 두 번 탭 확대만 꺼지고 손가락 두 개로 확대·스크롤은 그대로 (탭 반응 지연도 없어짐)
      게임 캔버스·점 슬라이더처럼 touch-action:none 인 곳은 더 구체적인 규칙이라 그대로 유지돼 */
   *{touch-action:manipulation}
+  /* 꾹 눌렀을 때 뜨는 "복사·붙여넣기" 메뉴 / 글자 선택 막기 — 글 쓰는 칸(입력칸)에서만 허용
+     사진 크게 보기(#lbImg)는 꾹 눌러서 "사진 저장"할 수 있게 남겨 둠 */
+  *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  #lbImg{-webkit-touch-callout:default}
   :focus-visible{outline:3px dashed var(--ink);outline-offset:3px}
 
   /* ===== 잠금 화면 ===== */
@@ -1265,6 +1270,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=sync1"></script>
+<script type="module" src="app.js?v=sel1"></script>
 </body>
 </html>

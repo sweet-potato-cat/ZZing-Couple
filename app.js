@@ -117,7 +117,7 @@ async function afterPin() {
 (() => {
   const dotsEl = $('dots'), dots = [...dotsEl.children], msg = $('pinMsg'), pad = $('pad');
   let input = '';
-  ['1','2','3','4','5','6','7','8','9','지우기','0','♥'].forEach((k) => {
+  ['1','2','3','4','5','6','7','8','9','♥','0','지우기'].forEach((k) => {   // 맨 아래 줄: ♥ · 0 · 지우기
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = k;
     b.className = 'key' + ((k === '지우기' || k === '♥') ? ' ghost' : '');
