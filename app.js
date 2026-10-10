@@ -907,60 +907,75 @@ async function mutate(fn) {
   catch (e) { console.error(e); $('status').textContent = '⚠️ 저장하지 못했어. 잠시 후 다시 해 줘.'; }
 }
 
+// 버킷리스트: 아직 못 한 것만 위에 보이고, 이룬 것(✅)은 아래 접힌 "이룬 것"으로 따로 보관 (최근에 이룬 순)
+//   데이터는 그대로 한 배열 (done: true + doneAt: 이룬 시각) → 키우기 간식 계산 등은 안 바뀜
+function bucketRow(it) {
+  const li = document.createElement('li'); if (it.done) li.className = 'done';
+
+  const c = document.createElement('button'); c.className = 'check'; c.type = 'button';
+  c.setAttribute('aria-label', it.done ? '완료 취소 (다시 해야 할 것으로)' : '완료로 표시');
+  c.textContent = it.done ? '♥' : '';
+  c.onclick = () => {
+    mutate((cur) => cur.map((x) => (x.id === it.id ? { ...x, done: !x.done, doneAt: x.done ? undefined : Date.now() } : x)));
+    if (!it.done) emoToast('✅ 이뤘다! "이룬 것"에 보관했어');
+  };
+
+  const who = document.createElement('span');
+  who.className = 'who ' + (it.by || '');
+  who.textContent = it.by === 'bear' ? '🐻' : it.by === 'bunny' ? '🐰' : '♥';
+  who.title = it.by === 'bear' ? '곰돌찡이 추가' : it.by === 'bunny' ? '토끼찡이 추가' : '';
+
+  let t;
+  if (editingId === it.id) {
+    t = document.createElement('input'); t.className = 'edit-in'; t.value = it.text; t.maxLength = 80;
+    t.setAttribute('aria-label', '항목 수정');
+    const finish = (save) => {
+      if (editingId !== it.id) return;
+      editingId = null;
+      const v = t.value.trim();
+      if (save && v && v !== it.text) mutate((cur) => cur.map((x) => x.id === it.id ? { ...x, text: v } : x));
+      else renderBucket();
+    };
+    t.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+    t.addEventListener('blur', () => finish(true));
+    setTimeout(() => t.focus(), 0);
+  } else {
+    t = document.createElement('span'); t.className = 'txt'; t.textContent = it.text;
+    if (it.done && it.doneAt) {   // 언제 이뤘는지
+      const w = document.createElement('small'); w.className = 'when'; w.textContent = prettyDate(ymd(new Date(it.doneAt)));
+      t.append(' ', w);
+    }
+  }
+
+  const ed = document.createElement('button'); ed.className = 'tool'; ed.type = 'button';
+  ed.setAttribute('aria-label', '수정'); ed.textContent = '✎';
+  ed.onclick = () => { editingId = it.id; renderBucket(); };
+
+  const d = document.createElement('button'); d.className = 'tool'; d.type = 'button';
+  d.setAttribute('aria-label', '삭제'); d.textContent = '✕';
+  d.onclick = () => { if (confirm(`"${it.text}" 지울까?`)) mutate((cur) => cur.filter((x) => x.id !== it.id)); };
+
+  li.append(c, who, t, ed, d);
+  return li;
+}
 function renderBucket() {
-  const list = $('list');
-  list.innerHTML = '';
-  if (!items.length) {
+  const list = $('list'), doneList = $('doneList');
+  const todo = items.filter((i) => !i.done);
+  const done = items.filter((i) => i.done).map((it, k) => ({ it, k }))
+    .sort((a, b) => (b.it.doneAt || 0) - (a.it.doneAt || 0) || b.k - a.k).map((x) => x.it);   // 최근에 이룬 게 위로
+  list.innerHTML = ''; doneList.innerHTML = '';
+  if (!todo.length) {
     const li = document.createElement('li');
-    li.textContent = '같이 하고 싶은 걸 첫 번째로 적어 봐 ✏️';
+    li.textContent = items.length ? '다 이뤘어! 🎉 또 같이 하고 싶은 걸 적어 봐 ✏️' : '같이 하고 싶은 걸 첫 번째로 적어 봐 ✏️';
     li.style.fontFamily = 'var(--hand)'; li.style.fontSize = '1.2rem';
     list.appendChild(li);
   }
-  items.forEach((it) => {
-    const li = document.createElement('li'); if (it.done) li.className = 'done';
-
-    const c = document.createElement('button'); c.className = 'check'; c.type = 'button';
-    c.setAttribute('aria-label', it.done ? '완료 취소' : '완료로 표시');
-    c.textContent = it.done ? '♥' : '';
-    c.onclick = () => mutate((cur) => cur.map((x) => x.id === it.id ? { ...x, done: !x.done } : x));
-
-    const who = document.createElement('span');
-    who.className = 'who ' + (it.by || '');
-    who.textContent = it.by === 'bear' ? '🐻' : it.by === 'bunny' ? '🐰' : '♥';
-    who.title = it.by === 'bear' ? '곰돌찡이 추가' : it.by === 'bunny' ? '토끼찡이 추가' : '';
-
-    let t;
-    if (editingId === it.id) {
-      t = document.createElement('input'); t.className = 'edit-in'; t.value = it.text; t.maxLength = 80;
-      t.setAttribute('aria-label', '항목 수정');
-      const finish = (save) => {
-        if (editingId !== it.id) return;
-        editingId = null;
-        const v = t.value.trim();
-        if (save && v && v !== it.text) mutate((cur) => cur.map((x) => x.id === it.id ? { ...x, text: v } : x));
-        else renderBucket();
-      };
-      t.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
-      t.addEventListener('blur', () => finish(true));
-      setTimeout(() => t.focus(), 0);
-    } else {
-      t = document.createElement('span'); t.className = 'txt'; t.textContent = it.text;
-    }
-
-    const ed = document.createElement('button'); ed.className = 'tool'; ed.type = 'button';
-    ed.setAttribute('aria-label', '수정'); ed.textContent = '✎';
-    ed.onclick = () => { editingId = it.id; renderBucket(); };
-
-    const d = document.createElement('button'); d.className = 'tool'; d.type = 'button';
-    d.setAttribute('aria-label', '삭제'); d.textContent = '✕';
-    d.onclick = () => { if (confirm(`"${it.text}" 지울까?`)) mutate((cur) => cur.filter((x) => x.id !== it.id)); };
-
-    li.append(c, who, t, ed, d);
-    list.appendChild(li);
-  });
-  const done = items.filter((i) => i.done).length;
-  $('count').textContent = `${items.length}개 중 ${done}개 완료`;
-  $('bar').style.width = items.length ? (done / items.length * 100) + '%' : '0';
+  todo.forEach((it) => list.appendChild(bucketRow(it)));
+  done.forEach((it) => doneList.appendChild(bucketRow(it)));
+  $('doneFold').hidden = !done.length;
+  $('doneSum').textContent = `✅ 이룬 것 ${done.length}개`;
+  $('count').textContent = `${items.length}개 중 ${done.length}개 완료`;
+  $('bar').style.width = items.length ? (done.length / items.length * 100) + '%' : '0';
 }
 
 $('addForm').addEventListener('submit', (e) => {

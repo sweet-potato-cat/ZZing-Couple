@@ -217,6 +217,10 @@
     font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
   }
   ul.bucket{list-style:none;margin:0;padding:0}
+  .bucket-done{border-top:2px dotted #bbb;margin-top:14px;padding-top:8px}
+  .bucket-done summary{cursor:pointer;font-family:var(--hand);font-size:1.25rem;padding:2px 0 6px}
+  .bucket-done li .txt{text-decoration:none;color:var(--ink)}   /* 이룬 것은 줄 긋지 않고 추억처럼 */
+  ul.bucket .when{font-size:.78rem;color:#999;white-space:nowrap;text-decoration:none;display:inline-block}
   ul.bucket li{
     display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:2px dotted #bbb;
   }
@@ -973,6 +977,7 @@
         <button class="btn green" type="submit">추가</button>
       </form>
       <ul class="bucket" id="list"></ul>
+      <details class="bucket-done" id="doneFold" hidden><summary id="doneSum">✅ 이룬 것</summary><ul class="bucket" id="doneList"></ul></details>
     </div>
   </section>
 
@@ -1260,6 +1265,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=sfx1"></script>
+<script type="module" src="app.js?v=bucket1"></script>
 </body>
 </html>
