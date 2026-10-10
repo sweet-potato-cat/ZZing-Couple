@@ -429,8 +429,8 @@ async function initGallery() {
   }
   try {
     gal.store = await firestoreStore(await sha256hex(state.docId + ':photos'), (e) => {
-      console.error(e); status.textContent = '⚠️ 올린 사진 목록을 불러오지 못했어. 인터넷 연결을 확인해 줘.';
-    });
+      console.error(e); status.textContent = '⚠️ 올린 사진 목록을 불러오지 못했어. 다시 연결하는 중…';
+    }, () => { status.textContent = ''; });
     gal.remote = true;
     gal.store.subscribe((next) => {
       gal.cloud = (Array.isArray(next) ? next : []).map((it) => ({
@@ -840,15 +840,36 @@ function getDb() {
   return dbPromise;
 }
 
-async function firestoreStore(docId, onError) {
+async function firestoreStore(docId, onError, onOk) {
   const { fs, db } = await getDb();
   const ref = fs.doc(db, 'couples', docId);
   return {
     subscribe(cb) {
-      fs.onSnapshot(ref, async (snap) => {
-        try { cb(snap.exists() ? await decryptItems(snap.data().ct) : []); }
-        catch (e) { onError(e); }
-      }, onError);
+      // 🛡️ 끊겨도 다시 붙기: 에러가 나면 Firestore 리스너는 그대로 멈춰 버려 (껐다 켜야 돌아오던 원인)
+      //    → 3초 뒤부터(최대 1분까지 늘려 가며) 다시 구독, 화면으로 돌아오거나 인터넷이 다시 되면 바로 다시
+      let unsub = null, timer = 0, wait = 3000, failed = false;
+      const start = () => {
+        clearTimeout(timer);
+        if (unsub) return;
+        unsub = fs.onSnapshot(ref, async (snap) => {
+          // 🛡️ 폰이 막 깨어나서 아직 오프라인이면 Firestore 가 "캐시에 없음(빈 문서)"을 먼저 보내
+          //    그걸 진짜로 믿으면 목록이 텅 비어 보여 (갤러리는 GitHub 사진 2장만 남음) → 서버 답을 기다려
+          if (!snap.exists() && snap.metadata.fromCache) return;
+          wait = 3000;
+          if (failed) { failed = false; if (onOk) onOk(); }
+          try { cb(snap.exists() ? await decryptItems(snap.data().ct) : []); }
+          catch (e) { onError(e); }
+        }, (e) => {
+          onError(e);
+          try { if (unsub) unsub(); } catch {}
+          unsub = null; failed = true;
+          timer = setTimeout(start, wait); wait = Math.min(60000, wait * 2);
+        });
+      };
+      const again = () => { if (!unsub && !document.hidden) start(); };
+      addEventListener('online', again);
+      document.addEventListener('visibilitychange', again);
+      start();
     },
     async mutate(fn) {
       // 둘이 동시에 수정해도 최신 상태 위에 적용되도록 transaction 사용
@@ -883,7 +904,9 @@ document.querySelectorAll('.me button').forEach((b) => b.addEventListener('click
 async function openStore(docId, localKey, status, name) {
   if (isConfigured()) {
     try {
-      const st = await firestoreStore(docId, (e) => { console.error(e); status.textContent = `⚠️ ${name}을(를) 불러오지 못했어. 인터넷 연결이나 Firebase 설정을 확인해 줘.`; });
+      const st = await firestoreStore(docId,
+        (e) => { console.error(e); status.textContent = `⚠️ ${name}을(를) 불러오지 못했어. 인터넷 연결이나 Firebase 설정을 확인해 줘.`; },
+        () => { status.textContent = ''; });   // 다시 연결되면 경고 지우기
       status.textContent = '';
       return st;
     } catch (e) {
