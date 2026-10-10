@@ -3,7 +3,7 @@ import { QUESTIONS } from './questions.js?v=1';
 import { LogGame } from './games/logroll.js?v=1';
 import { BallGame } from './games/ballcatch.js?v=2';
 import { HurdleGame } from './games/hurdle.js?v=1';
-import { SortGame } from './games/sort.js?v=5';
+import { SortGame, SORT_TOTAL } from './games/sort.js?v=6';
 
 // config.js 에 값이 없어도 동작하도록 기본값 사용
 const FIREBASE_CONFIG = CFG.FIREBASE_CONFIG || {};
@@ -2868,12 +2868,13 @@ const GAMES = {
     exp: (m) => Math.min(10, Math.max(1, Math.round(m / 80))),   // 80m마다 ⭐1, 최대 10
     fail: '꽈당! 🐶',
   },
-  sort: {
+  sort: {   // ⏱ 타임어택: 기록 = 걸린 시간(초), 짧을수록 좋음 (lower)
     title: '🐻🐰 곰토 나누기', Cls: SortGame, ctrl: 'gameCtrlSort', load: sortAssets,
-    help: '맨 아래 동그라미 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶! 단, 😈 "시러"는 반대로! 시간이 갈수록 표정이 늘고, 60초부터는 순서가 바뀌어. 틀리거나 빨간 선을 넘으면 ♥ 하나',
-    round: (v) => Math.round(v), fmt: (v) => `${v}점`,
-    exp: (s) => Math.min(10, Math.max(1, Math.round(s / 20))),   // 20점마다 ⭐1, 최대 10
-    fail: '끝! 🐾',
+    rec: 'sort200', lower: true,   // 예전(점수제) 기록과 섞이지 않게 기록 칸을 새로
+    help: `친구 ${SORT_TOTAL}명을 누가 가장 빨리 나누나! 맨 아래 동그라미 친구가 토끼찡이면 ◀ 왼쪽, 곰돌찡이면 오른쪽 ▶. 단, 어두운 😈 "시러"는 반대로! 틀리면 1초 벌칙`,
+    round: (v) => Math.round(v * 10) / 10, fmt: (v) => `${Number(v).toFixed(1)}초`,
+    exp: (sec) => Math.min(10, Math.max(1, Math.round((150 - sec) / 9))),   // 60초 안이면 ⭐10, 느릴수록 줄어 (최소 1)
+    fail: '🏁 완주!',
   },
 };
 const gm = { key: null, game: null, imgs: null, playing: false };
@@ -2919,7 +2920,7 @@ function dogImages() {
 }
 
 function gameRecord(key) {
-  const g = (pet.data && pet.data.games && pet.data.games[key]) || {};
+  const G = GAMES[key], g = (pet.data && pet.data.games && pet.data.games[(G && G.rec) || key]) || {};
   return { best: g.best || {}, plays: g.day === todayYmd() ? (g.plays || {}) : {} };
 }
 function renderGameRec() {
@@ -2983,7 +2984,8 @@ async function startGame() {
   gm.playing = false;
   if ($('gameSheet').hidden || gm.game !== game) return;
   const res = await finishGame(key, GAMES[key].round(score));
-  if ((key === 'ball' || key === 'sort') && game.maxCombo >= 2) res.extra = `최대 ${game.maxCombo} 콤보 🔥`;
+  if (key === 'ball' && game.maxCombo >= 2) res.extra = `최대 ${game.maxCombo} 콤보 🔥`;
+  if (key === 'sort') res.extra = game.miss ? `실수 ${game.miss}번 (+${game.miss}초 벌칙)` : '실수 없이 완주! 💯';
   gameScreen('over', res);
   renderGameRec();
 }
@@ -2996,22 +2998,24 @@ async function finishGame(key, score) {
   await petMutate((cur) => {
     const q = normPet(cur);
     if (!q) return cur;
-    const games = { ...(q.games || {}) }, L = games[key] || {};
+    const rk = G.rec || key, games = { ...(q.games || {}) }, L = games[rk] || {};
     const plays = L.day === today ? { ...(L.plays || {}) } : {};
     const best = { ...(L.best || {}) };
     const n = plays[me] || 0;
-    res.best = score > (best[me] || 0); if (res.best) best[me] = score;
+    res.best = G.lower ? score > 0 && (!best[me] || score < best[me]) : score > (best[me] || 0);   // lower: 시간이라 짧을수록 신기록
+    if (res.best) best[me] = score;
     res.capped = n >= GAME_DAILY;
     res.exp = res.capped || score <= 0 ? 0 : G.exp(score);
     if (res.exp > 0) plays[me] = n + 1;   // 0점 판은 횟수에 안 셈
-    games[key] = { best, day: today, plays };
+    games[rk] = { best, day: today, plays };
     expAfter = (q.exp || 0) + res.exp;
     return { ...q, exp: expAfter, games };
   });
   const after = petLevel(expAfter).lv;
   if (after > before) res.lvUp = after;
   const them = partnerOf(me), tb = gameRecord(key).best[them];
-  if (tb && score < tb) res.partner = `${WHO[them].icon} ${WHO[them].name} 기록까지 ${G.fmt(G.round(tb - score))} 남았어!`;
+  const behind = tb && (G.lower ? score > tb : score < tb);
+  if (behind) res.partner = `${WHO[them].icon} ${WHO[them].name} 기록까지 ${G.fmt(G.round(Math.abs(tb - score)))} ${G.lower ? '더 빨라야 해!' : '남았어!'}`;
   else if (tb && res.best) res.partner = `${WHO[them].icon} ${WHO[them].name} 기록(${G.fmt(tb)})을 넘었어! 😎`;
   return res;
 }
