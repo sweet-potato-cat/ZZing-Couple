@@ -2388,6 +2388,13 @@ function petLevel(exp) {
   return { lv, cur: left, need };
 }
 const petStage = (lv) => (lv >= 10 ? '어른' : lv >= 5 ? '꼬마' : '아기');
+// 단계마다 다른 그림 (index.html #petPet 안의 svg.dog-baby / dog-kid / dog-adult)
+const PET_STAGE_CLS = { 아기: 'baby', 꼬마: 'kid', 어른: 'adult' };
+const PET_STAGE_RANK = { 아기: 0, 꼬마: 1, 어른: 2 };
+const PET_STAGE_NEXT = { 아기: [5, '꼬마'], 꼬마: [10, '어른'] };   // [이 레벨이 되면, 이 단계로]
+const PET_STAGE_SEEN = 'couple-pet-stage-seen';   // 이 기기에서 마지막으로 본 단계 (컸을 때 축하는 기기마다 한 번)
+const petSvg = (stage) => document.querySelector(`#petPet svg.dog-${PET_STAGE_CLS[stage] || 'kid'}`) || document.querySelector('#petPet svg');
+const curPetStage = () => (pet.data ? petStage(petLevel(pet.data.exp).lv) : '꼬마');
 const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
 // 받침 있으면 a, 없으면 b (곰돌찡이 / 뭉치가)
 const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1) - 0xAC00; return c >= 0 && c <= 11171 && c % 28 ? a : b; };
@@ -2413,10 +2420,12 @@ function renderPet() {
   if (!p) { renderPetAdopt(); return; }
 
   const c = petCounts(), food = petFood(p, c), full = petFull(p), L = petLevel(p.exp), kind = PET_KINDS[p.kind];
-  $('petSub').textContent = `${kind.icon} Lv.${L.lv} ${petStage(L.lv)} ${kind.label} · 같이 키운 지 ${Math.floor((Date.now() - p.at) / 86400000) + 1}일`;
+  const st = petStage(L.lv), nx = PET_STAGE_NEXT[st];
+  $('petSub').textContent = `${kind.icon} Lv.${L.lv} ${st} ${kind.label}${nx ? ` · Lv.${nx[0]}에 ${nx[1]}${josa(nx[1], '으로', '로')} 커!` : ''} · 같이 키운 지 ${Math.floor((Date.now() - p.at) / 86400000) + 1}일`;
   $('petName').textContent = p.name;
   const stage = $('petStage');
-  stage.dataset.stage = petStage(L.lv);
+  stage.dataset.stage = st;
+  petCheckGrow(p, st, kind);
   stage.classList.toggle('hungry', full < 30);
   $('petFullBar').style.width = full + '%';
   $('petFullTxt').textContent = full < 30 ? `${Math.round(full)}% 배고파…` : `${Math.round(full)}%`;
@@ -2526,9 +2535,19 @@ function petSay(text) {
   clearTimeout(pet.sayT);
   pet.sayT = setTimeout(() => { el.hidden = true; }, 2600);
 }
+// 🎉 다음 단계로 컸으면 축하 (이 기기에서 처음 볼 때 한 번. 상대가 키워서 컸어도 다음에 열면 떠)
+function petCheckGrow(p, st, kind) {
+  const seen = lsGet(PET_STAGE_SEEN, null);
+  if (seen && seen.at === p.at && seen.st === st) return;
+  lsSet(PET_STAGE_SEEN, { at: p.at, st });
+  if (!seen || seen.at !== p.at || !(PET_STAGE_RANK[st] > PET_STAGE_RANK[seen.st])) return;   // 처음 보는 기기·새로 데려온 펫은 축하 X
+  const msg = `🎉 ${p.name}${josa(p.name, '이', '가')} ${st} ${kind.label}${josa(kind.label, '으로', '로')} 컸어!`;
+  setTimeout(() => { petAnim('grow'); petHearts(10); petSay(`🎉 ${st}${josa(st, '으로', '로')} 컸어!`); }, 300);   // 말풍선은 짧게, 전체 문장은 토스트로
+  try { emoToast(msg); } catch {}
+}
 function petAnim(cls) {
   const el = $('petPet');
-  el.classList.remove('jump', 'eat'); void el.offsetWidth; el.classList.add(cls);
+  el.classList.remove('jump', 'eat', 'grow'); void el.offsetWidth; el.classList.add(cls);
 }
 function petHearts(n) {
   const stage = $('petStage');
@@ -2996,10 +3015,10 @@ function farmPetList() {
   return list;
 }
 // 키우기 화면의 SVG를 그림 한 장으로 (배고프면 시무룩한 얼굴). 고양이·햄스터 그림이 생기면 kind별로 나누기
-function farmPetImg(kind, hungry) {
-  const key = kind + (hungry ? ':h' : '');
+function farmPetImg(kind, hungry, stage) {
+  const key = `${kind}:${stage}` + (hungry ? ':h' : '');
   if (farm.img[key]) return farm.img[key];
-  const src = document.querySelector('#petPet svg');
+  const src = petSvg(stage);   // 단계마다 다른 그림
   if (!src) return '';
   const c = src.cloneNode(true);
   c.querySelectorAll(hungry ? '.dg-happy' : '.dg-sad').forEach((n) => n.remove());
@@ -3025,7 +3044,7 @@ function syncFarmPets() {
     el.type = 'button'; el.className = 'farm-pet'; el.setAttribute('aria-label', `${p.name} (누르면 한마디)`);
     el.style.width = `${((FARM_PET_W[p.stage] || 44) / FW) * 100}%`;
     el.innerHTML = '<div class="fp-in"><div class="fp-bob"><img alt=""></div><span class="fp-name"></span></div>';
-    el.querySelector('img').src = farmPetImg(p.kind, p.hungry);
+    el.querySelector('img').src = farmPetImg(p.kind, p.hungry, p.stage);
     el.querySelector('.fp-name').textContent = p.name;
     const prev = old.get(p.id);
     const w = prev ? Object.assign(prev, { p, el, img: el.querySelector('img') })
@@ -3155,8 +3174,8 @@ function sortAssets() {
 
 // 키우기 화면의 강아지 SVG → 게임용 그림 2장 (웃는 얼굴 / 놀란 얼굴)
 // 나중에 직접 그린 그림(PNG/SVG 동작별)이 생기면 여기서 그 파일들을 불러오면 돼
-function dogImages() {
-  const src = document.querySelector('#petPet svg');
+function dogImages(stage) {
+  const src = petSvg(stage);   // 지금 단계 그림으로 게임도
   const mk = (hide) => new Promise((res) => {
     const c = src.cloneNode(true);
     c.querySelectorAll(hide).forEach((n) => n.remove());
@@ -3211,7 +3230,7 @@ async function openGame(key) {
   Object.values(GAMES).forEach((g) => { $(g.ctrl).hidden = g !== G; });
   $('gameSheet').hidden = false;
   renderGameRec();
-  if (!gm.imgs) gm.imgs = await dogImages();
+  if (!gm.imgs || gm.imgsStage !== curPetStage()) { gm.imgsStage = curPetStage(); gm.imgs = await dogImages(gm.imgsStage); }
   if (gm.game) gm.game.destroy();
   const them = partnerOf(getMe());
   const extra = G.load ? await G.load() : {};

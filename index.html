@@ -336,11 +336,19 @@
     background:linear-gradient(#EAF3FC 0 70%,#DDF0D9 70%);display:flex;align-items:flex-end;justify-content:center;
   }
   .pet-pet{border:0;background:none;padding:0;cursor:pointer;margin-bottom:4px;transform-origin:50% 100%;transition:transform .5s;-webkit-tap-highlight-color:transparent}
-  .pet-stage[data-stage="아기"] .pet-pet{transform:scale(.74)}
-  .pet-stage[data-stage="꼬마"] .pet-pet{transform:scale(.88)}
+  /* 단계마다 다른 그림 + 크기: 아기 140 → 꼬마 168 → 어른 196px */
+  .pet-pet .dog{display:none}
+  .pet-stage[data-stage="아기"] .dog-baby,.pet-stage[data-stage="꼬마"] .dog-kid,.pet-stage[data-stage="어른"] .dog-adult,.pet-stage:not([data-stage]) .dog-kid{display:block}
+  .pet-pet .dog-baby{width:140px}
+  .pet-pet .dog-kid{width:168px}
+  .pet-pet .dog-adult{width:196px}
+  .dog-baby .dg-tail{transform-origin:90% 50%}
+  .dog-adult .dg-tail{transform-origin:85% 92%}
   .pet-pet svg{width:190px;height:auto;display:block;transform-origin:50% 100%;animation:petbob 2.6s ease-in-out infinite}
   .pet-pet.jump svg{animation:petjump .55s ease-out}
   .pet-pet.eat svg{animation:peteat .7s ease-in-out}
+  .pet-pet.grow svg{animation:petgrow 1.1s cubic-bezier(.3,1.5,.5,1)}   /* 🎉 다음 단계로 컸을 때 */
+  @keyframes petgrow{0%{transform:scale(.5);filter:brightness(1.7)}55%{transform:scale(1.12);filter:none}100%{transform:scale(1)}}
   @keyframes petbob{50%{transform:translateY(-4px) scaleY(.985)}}
   @keyframes petjump{35%{transform:translateY(-28px)}70%{transform:translateY(0) scaleY(.92)}}
   @keyframes peteat{20%,60%{transform:rotate(-5deg) scaleY(.96)}40%,80%{transform:rotate(5deg)}}
@@ -1078,7 +1086,36 @@
         <div class="pet-stage" id="petStage">
           <div class="pet-say" id="petSay" role="status" aria-live="polite" hidden></div>
           <button type="button" class="pet-pet" id="petPet" aria-label="쓰다듬기">
-            <svg class="dog" viewBox="0 0 200 214" aria-hidden="true">
+            <!-- 🐶 단계마다 다른 그림: 아기(dog-baby) → 꼬마(dog-kid) → 어른(dog-adult). 키우기 화면에선 #petStage[data-stage] 에 맞는 것만 보여 -->
+<svg class="dog dog-baby" viewBox="0 0 200 214" aria-hidden="true">
+<defs><g id="dgBTail"><circle cx="62" cy="186" r="9"/><circle cx="56" cy="178" r="6"/></g><g id="dgBBody"><circle cx="100" cy="170" r="30"/><circle cx="100" cy="186" r="26"/><circle cx="78" cy="180" r="13"/><circle cx="122" cy="180" r="13"/></g><g id="dgBPaws"><circle cx="78" cy="201" r="11"/><circle cx="122" cy="201" r="11"/><circle cx="90" cy="204" r="9"/><circle cx="110" cy="204" r="9"/></g><g id="dgBEars"><circle cx="50" cy="92" r="15"/><circle cx="45" cy="108" r="12"/><circle cx="150" cy="92" r="15"/><circle cx="155" cy="108" r="12"/></g><g id="dgBHead"><ellipse cx="100" cy="100" rx="56" ry="52"/></g></defs>
+<ellipse cx="100" cy="209" rx="40" ry="5" fill="#000" opacity=".08"/>
+<g class="dg-tail"><use href="#dgBTail" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBTail" fill="#F2D0A6"/></g>
+<use href="#dgBBody" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBBody" fill="#F2D0A6"/>
+<use href="#dgBPaws" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBPaws" fill="#F2D0A6"/>
+<path d="M78 207v-5M122 207v-5" stroke="#1f1f1f" stroke-width="2.2" stroke-linecap="round"/>
+<g class="dg-ears"><use href="#dgBEars" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBEars" fill="#E2B285"/></g>
+<use href="#dgBHead" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgBHead" fill="#F2D0A6"/>
+<path d="M98 50 q-8 -13 3 -17 q9 -1 7 8 q-2 5 -7 2" fill="none" stroke="#1f1f1f" stroke-width="3" stroke-linecap="round"/>
+<path d="M76 146 Q100 182 124 146 Q100 156 76 146Z" fill="#fff" stroke="#1f1f1f" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M100 168 c-4 -3 -5.5 -5 -5.5 -6.5 c0 -2 1.5 -3 3 -3 c1 0 2 .6 2.5 1.6 c.5 -1 1.5 -1.6 2.5 -1.6 c1.5 0 3 1 3 3 c0 1.5 -1.5 3.5 -5.5 6.5z" fill="#FF8E8F"/>
+<ellipse cx="100" cy="122" rx="20" ry="14" fill="#FBEBD6"/>
+<ellipse cx="66" cy="120" rx="10" ry="7" fill="#F5A3A3" opacity=".9"/>
+<ellipse cx="134" cy="120" rx="10" ry="7" fill="#F5A3A3" opacity=".9"/>
+<g class="dg-happy">
+  <ellipse cx="80" cy="106" rx="7" ry="8.6" fill="#1f1f1f"/><circle cx="82.6" cy="103" r="2.6" fill="#fff"/><circle cx="78" cy="110" r="1.2" fill="#fff"/>
+  <ellipse cx="120" cy="106" rx="7" ry="8.6" fill="#1f1f1f"/><circle cx="122.6" cy="103" r="2.6" fill="#fff"/><circle cx="118" cy="110" r="1.2" fill="#fff"/>
+  <path d="M93 124 q3.5 4.5 7 0 q3.5 4.5 7 0" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M97 127.5 q3 5 6 0z" fill="#F27D8C" stroke="#1f1f1f" stroke-width="1.6" stroke-linejoin="round"/>
+</g>
+<g class="dg-sad">
+  <path d="M73 107 q7 4 14 0 M113 107 q7 4 14 0" fill="none" stroke="#1f1f1f" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M94 128 q3 -3 6 0 q3 3 6 0" fill="none" stroke="#1f1f1f" stroke-width="2.3" stroke-linecap="round"/>
+  <path d="M84 112 q4 6 0 9 q-4 -3 0 -9z" fill="#9CCBF0" stroke="#1f1f1f" stroke-width="1.6"/>
+</g>
+<ellipse cx="100" cy="117" rx="5.2" ry="3.9" fill="#1f1f1f"/>
+</svg>
+<svg class="dog dog-kid" viewBox="0 0 200 214" aria-hidden="true">
 <defs><g id="dgTail"><circle cx="48" cy="168" r="11"/><circle cx="41" cy="158" r="8"/><circle cx="43" cy="178" r="8"/><circle cx="53" cy="181" r="7"/></g><g id="dgBody"><circle cx="100" cy="132" r="30"/><circle cx="100" cy="166" r="38"/><circle cx="70" cy="150" r="15"/><circle cx="130" cy="150" r="15"/><circle cx="66" cy="172" r="15"/><circle cx="134" cy="172" r="15"/><circle cx="80" cy="192" r="14"/><circle cx="120" cy="192" r="14"/><circle cx="100" cy="196" r="14"/></g><g id="dgEars"><circle cx="54" cy="96" r="18"/><circle cx="47" cy="115" r="16"/><circle cx="53" cy="132" r="13"/><circle cx="146" cy="96" r="18"/><circle cx="153" cy="115" r="16"/><circle cx="147" cy="132" r="13"/></g><g id="dgHead"><circle cx="100" cy="80" r="44"/><circle cx="100" cy="40" r="15"/><circle cx="122" cy="45.4" r="15"/><circle cx="138.1" cy="60" r="15"/><circle cx="144" cy="80" r="15"/><circle cx="138.1" cy="100" r="15"/><circle cx="61.9" cy="100" r="15"/><circle cx="56" cy="80" r="15"/><circle cx="61.9" cy="60" r="15"/><circle cx="78" cy="45.4" r="15"/></g><g id="dgPaws"><circle cx="85" cy="198" r="11"/><circle cx="115" cy="198" r="11"/></g></defs>
 <ellipse cx="100" cy="208" rx="52" ry="6" fill="#000" opacity=".08"/>
 <g class="dg-tail"><use href="#dgTail" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgTail" fill="#E6B886"/></g>
@@ -1105,6 +1142,38 @@
 </g>
 <ellipse cx="100" cy="99" rx="6.5" ry="4.8" fill="#1f1f1f"/>
 <path d="M100 103.5v3" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
+<svg class="dog dog-adult" viewBox="0 0 200 214" aria-hidden="true">
+<defs><g id="dgATail"><circle cx="46" cy="176" r="12"/><circle cx="36" cy="164" r="11"/><circle cx="30" cy="150" r="9.5"/><circle cx="30" cy="137" r="7.5"/></g><g id="dgABody"><circle cx="100" cy="122" r="24"/><circle cx="100" cy="158" r="36"/><circle cx="66" cy="182" r="21"/><circle cx="134" cy="182" r="21"/><rect x="74" y="132" width="20" height="74" rx="10"/><rect x="106" y="132" width="20" height="74" rx="10"/></g><g id="dgAPaws"><ellipse cx="84" cy="204" rx="13" ry="8"/><ellipse cx="116" cy="204" rx="13" ry="8"/><ellipse cx="56" cy="203" rx="12" ry="7"/><ellipse cx="144" cy="203" rx="12" ry="7"/></g><g id="dgAEars"><circle cx="64" cy="56" r="14"/><circle cx="57" cy="74" r="13.5"/><circle cx="55" cy="92" r="12.5"/><circle cx="58" cy="108" r="10.5"/><circle cx="136" cy="56" r="14"/><circle cx="143" cy="74" r="13.5"/><circle cx="145" cy="92" r="12.5"/><circle cx="142" cy="108" r="10.5"/></g><g id="dgAHead"><circle cx="100" cy="62" r="34"/><circle cx="100" cy="28" r="12"/><circle cx="118" cy="33.2" r="12"/><circle cx="130.6" cy="47.1" r="12"/><circle cx="133.8" cy="65.6" r="12"/><circle cx="66.2" cy="65.6" r="12"/><circle cx="69.4" cy="47.1" r="12"/><circle cx="82" cy="33.2" r="12"/><ellipse cx="100" cy="88" rx="24" ry="17"/></g></defs>
+<ellipse cx="100" cy="209" rx="62" ry="6" fill="#000" opacity=".08"/>
+<g class="dg-tail"><use href="#dgATail" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgATail" fill="#E6B886"/></g>
+<use href="#dgABody" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgABody" fill="#E6B886"/>
+
+<ellipse cx="100" cy="160" rx="16" ry="22" fill="#F6DDBD"/>
+<path d="M94 172V200M106 172V200" stroke="#1f1f1f" stroke-width="2.6" stroke-linecap="round"/>
+<use href="#dgAPaws" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgAPaws" fill="#E6B886"/>
+<path d="M80 209v-5M88 209v-5M112 209v-5M120 209v-5" stroke="#1f1f1f" stroke-width="2.2" stroke-linecap="round"/>
+<g class="dg-ears"><use href="#dgAEars" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgAEars" fill="#C98F5C"/></g>
+<use href="#dgAHead" fill="#1f1f1f" stroke="#1f1f1f" stroke-width="7"/><use href="#dgAHead" fill="#E6B886"/>
+<ellipse cx="100" cy="90" rx="19" ry="13" fill="#F6DDBD"/>
+<path d="M68 106 Q100 124 132 106 L104 142 Q100 146 96 142Z" fill="#E8696A" stroke="#1f1f1f" stroke-width="2.8" stroke-linejoin="round"/>
+<circle cx="88" cy="116" r="2.2" fill="#fff"/><circle cx="112" cy="116" r="2.2" fill="#fff"/><circle cx="100" cy="126" r="2.2" fill="#fff"/><circle cx="100" cy="114" r="1.6" fill="#fff"/>
+<ellipse cx="73" cy="84" rx="8" ry="5.5" fill="#F5A3A3" opacity=".8"/>
+<ellipse cx="127" cy="84" rx="8" ry="5.5" fill="#F5A3A3" opacity=".8"/>
+<g class="dg-happy">
+  <path d="M79 57 q6 -4 12 0 M109 57 q6 -4 12 0" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+  <ellipse cx="85" cy="67" rx="4" ry="5" fill="#1f1f1f"/><circle cx="86.4" cy="65.4" r="1.3" fill="#fff"/>
+  <ellipse cx="115" cy="67" rx="4" ry="5" fill="#1f1f1f"/><circle cx="116.4" cy="65.4" r="1.3" fill="#fff"/>
+  <path d="M91 92 Q100 108 109 92 Q100 96 91 92Z" fill="#F27D8C" stroke="#1f1f1f" stroke-width="2.4" stroke-linejoin="round"/>
+</g>
+<g class="dg-sad">
+  <path d="M78 62 l10 -3 M122 62 l-10 -3" fill="none" stroke="#1f1f1f" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M80 69 q5 3 10 0 M110 69 q5 3 10 0" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M93 97 q3.5 -3 7 0 q3.5 3 7 0" fill="none" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M132 44 q5 7 0 10 q-5 -3 0 -10z" fill="#9CCBF0" stroke="#1f1f1f" stroke-width="1.8"/>
+</g>
+<ellipse cx="100" cy="84" rx="7.5" ry="5.4" fill="#1f1f1f"/><circle cx="98" cy="82.6" r="1.4" fill="#fff" opacity=".8"/>
+<path d="M100 89.4v3" stroke="#1f1f1f" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
           </button>
         </div>
