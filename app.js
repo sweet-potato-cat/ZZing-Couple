@@ -123,7 +123,11 @@ async function afterPin() {
     b.type = 'button'; b.textContent = k;
     b.className = 'key' + ((k === '지우기' || k === '♥') ? ' ghost' : '');
     if (k === '♥') { b.setAttribute('aria-hidden', 'true'); b.tabIndex = -1; }
-    b.addEventListener('click', () => press(k));
+    // ⚡ 빠르게 연타해도 다 들어가게: 손가락이 닿는 순간(pointerdown) 바로 입력
+    //    click 은 아이폰이 "두 번 탭(확대) 아닌가?" 하고 0.3~0.5초 기다리거나, 빨리 누른 두 번째 탭을 삼켜 버려
+    //    키보드로 버튼을 눌렀을 때(Enter/Space → click, detail 0)만 click 으로 받기 (터치 click 은 무시해서 두 번 안 들어가게)
+    b.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); press(k); });
+    b.addEventListener('click', (e) => { if (e.detail === 0) press(k); });
     pad.appendChild(b);
   });
   const render = () => dots.forEach((d, i) => d.classList.toggle('on', i < input.length));
