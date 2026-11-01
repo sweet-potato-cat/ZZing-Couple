@@ -86,6 +86,7 @@ function unlocked(key, docId) {
   initCalendar();
   initRecipes();
   initEmoticon();
+  initNow();
   initDotNav();
   initQna();
   initPush();
@@ -361,7 +362,7 @@ for (const [who] of BDAY_WHO) {
   lsWrite(PREF_KEY, { film: $('prefFilm').checked, stamp: $('prefStamp').checked })));
 // "나는 누구?"가 바뀌면 그걸 쓰는 화면들 다시 그리기
 document.addEventListener('mechange', () => {
-  for (const f of [renderQna, renderRecipes, renderGrape]) { try { f(); } catch {} }
+  for (const f of [renderQna, renderRecipes, renderGrape, renderNow]) { try { f(); } catch {} }
   try { if (!$('emoPop').hidden) renderEmoPop(); } catch {}
   try { renderPush().catch(() => {}); } catch {}
 });
@@ -1817,13 +1818,157 @@ function hideDotLabelSoon() {
   nav.labelT = setTimeout(() => $('dotLabel').classList.remove('show'), 700);
 }
 
+/* ====================== 🚪 지금 뭐해? (교수님 방 문패) ====================== */
+// 내 문패의 줄을 누르면 자석(●)이 그 칸으로 옮겨가 → 상대 화면 문패도 바로 바뀌고 🔔 알림이 가. 상대 문패는 보기만.
+// 연달아 바꾸면 마지막 것만 알림 (NOW_NOTIFY_WAIT), 폰에서도 같은 알림 칸(tag 'now')을 덮어써서 쌓이지 않아.
+// 저장: couples/{sha256(docId + ':now')} = 암호화된 { bear: { s, at }, bunny: { s, at } }
+// 상태 추가·순서·색은 NOW_LIST 만 고치면 돼 (⚠️ k는 바꾸지 말기 — 저장된 값이 k라서)
+const NOW_LIST = [
+  { k: 'work', e: '💼', t: '근로중!', c: '#FBEEDD' },
+  { k: 'meet', e: '🗣️', t: '미팅중!', c: '#EAF3FC' },
+  { k: 'eat', e: '🍚', t: '식사중!', c: '#FFF1C2' },
+  { k: 'free', e: '😊', t: '안바쁨!', c: '#DDF0D9' },
+  { k: 'busy', e: '🔥', t: '지금바쁨!', c: '#FFD2D2' },
+  { k: 'move', e: '🚌', t: '이동중!', c: '#E8E0FA' },
+  { k: 'wash', e: '🛁', t: '씻는중!', c: '#DDF3F6' },
+  { k: 'sleep', e: '😴', t: '자는중!', c: '#D9DCF2' },
+];
+const NOW_BY = Object.fromEntries(NOW_LIST.map((x) => [x.k, x]));
+const NOW_STALE = 12 * 3600000;   // 12시간 넘게 그대로면 흐리게 + "오래됐어" (같은 걸 다시 누르면 새로 걸기)
+const NOW_NOTIFY_WAIT = 2500;     // 이 시간(ms) 안에 또 바꾸면 알림은 마지막 것 하나만
+const nowSt = { store: null, data: {}, loaded: false, timer: 0, notifyT: 0, pending: null, msgT: 0 };
+const normNow = (v) => {
+  const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  const out = {};
+  for (const w of ['bear', 'bunny']) {
+    const x = o[w];
+    if (x && NOW_BY[x.s] && Number.isFinite(x.at)) out[w] = { s: x.s, at: x.at };
+  }
+  return out;
+};
+const nowSince = (at) => { const a = ago(at); return a === '방금' ? '방금 걸었어' : `${a}부터`; };
+function nowMsg(t) {
+  const el = $('nowMsg'); el.textContent = t;
+  clearTimeout(nowSt.msgT); nowSt.msgT = setTimeout(() => { el.textContent = ''; }, 5000);
+}
+
+function buildNow() {
+  const box = $('nowDoors'); box.innerHTML = '';
+  for (const w of ['bear', 'bunny']) {
+    const door = document.createElement('div');
+    door.className = `now-door ${w}`; door.id = 'nowDoor-' + w;
+    const head = document.createElement('div'); head.className = 'nd-who';
+    const list = document.createElement('div'); list.className = 'nd-list'; list.setAttribute('role', 'group');
+    for (const x of NOW_LIST) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'nd-row'; b.dataset.s = x.k; b.style.setProperty('--c', x.c);
+      const e = document.createElement('span'); e.className = 'nd-e'; e.textContent = x.e;
+      const t = document.createElement('span'); t.className = 'nd-t'; t.textContent = x.t;
+      const m = document.createElement('i'); m.className = 'nd-mag'; m.setAttribute('aria-hidden', 'true');
+      b.append(e, t, m);
+      b.addEventListener('click', () => setNow(w, x.k));
+      list.appendChild(b);
+    }
+    const tm = document.createElement('div'); tm.className = 'nd-time';
+    door.append(head, list, tm);
+    box.appendChild(door);
+  }
+}
+
+function renderNow() {
+  if (!$('nowDoors')) return;
+  if (!$('nowDoors').firstChild) buildNow();
+  const me = getMe();
+  $('nowMe').hidden = !!me;
+  $('nowSub').textContent = me ? '내 문패를 누르면 상대한테 알림이 가 🔔' : '교수님 방 문패처럼 지금 상태를 걸어 두자';
+  for (const w of ['bear', 'bunny']) {
+    const door = $('nowDoor-' + w), cur = nowSt.data[w], mine = w === me;
+    const stale = !!cur && Date.now() - cur.at > NOW_STALE;
+    door.classList.toggle('mine', mine);
+    door.classList.toggle('stale', stale);
+    const head = door.querySelector('.nd-who');
+    head.textContent = `${WHO[w].icon} ${WHO[w].name}`;
+    if (mine) { const tag = document.createElement('span'); tag.className = 'nd-tag'; tag.textContent = '나'; head.appendChild(tag); }
+    door.querySelector('.nd-list').setAttribute('aria-label', mine ? '내 상태 고르기' : `${WHO[w].name} 상태`);
+    door.querySelectorAll('.nd-row').forEach((b) => {
+      const on = !!cur && cur.s === b.dataset.s;
+      b.classList.toggle('on', on);
+      b.disabled = !mine;
+      b.setAttribute('aria-pressed', String(on));
+    });
+    door.querySelector('.nd-time').textContent = !nowSt.loaded ? '불러오는 중…'
+      : cur ? nowSince(cur.at) + (stale ? ' · 오래됐어' : '')
+      : mine ? '아직 안 걸었어 · 눌러서 걸기' : '아직 안 걸었어';
+  }
+}
+
+async function setNow(w, s) {
+  const me = getMe();
+  if (!me || w !== me || !NOW_BY[s] || !nowSt.store) return;
+  const cur = nowSt.data[me], x = NOW_BY[s];
+  if (cur && cur.s === s && Date.now() - cur.at <= NOW_STALE) { nowMsg(`이미 ${x.e} ${x.t} 걸려 있어`); return; }
+  const prev = nowSt.data, at = Date.now();
+  nowSt.data = { ...prev, [me]: { s, at } };   // 내 화면엔 바로
+  renderNow();
+  try { await nowSt.store.mutate((d) => ({ ...normNow(d), [me]: { s, at } })); }
+  catch (e) {
+    console.error(e);
+    nowSt.data = prev; renderNow();
+    nowMsg('⚠️ 문패를 못 바꿨어. 잠시 후 다시 해 줘.');
+    return;
+  }
+  nowMsg(`${x.e} ${x.t} 걸어 뒀어 ✓`);
+  nowSt.pending = s;
+  clearTimeout(nowSt.notifyT);
+  nowSt.notifyT = setTimeout(flushNowNotify, NOW_NOTIFY_WAIT);
+}
+
+// 상대에게 알림 (마지막으로 고른 것 하나만)
+async function flushNowNotify() {
+  clearTimeout(nowSt.notifyT);
+  const s = nowSt.pending; nowSt.pending = null;
+  const to = partnerOf(getMe());
+  if (!s || !to || !PUSH_URL || !push.c) return;
+  const x = NOW_BY[s], label = `${x.e} ${x.t}`;
+  let r = null;
+  try { r = await pushPost('/notify', { to, type: 'now', label }, true); }
+  catch (e) {
+    // 알림 서버(worker.js)를 아직 새로 배포 안 했으면 'now' 문구가 없어 → 이모티콘 문구로라도 보내기
+    if (e.message !== 'type/to') { console.warn('notify now', e.message); return; }
+    try { r = await pushPost('/notify', { to, type: 'emo', label }, true); } catch (e2) { console.warn('notify now', e2.message); return; }
+  }
+  if (document.hidden || nowSt.pending) return;
+  nowMsg(r && r.sent > 0 ? `${WHO[to].icon} ${WHO[to].name}한테 알림 보냈어 🔔`
+    : `${x.e} ${x.t} 걸어 뒀어 ✓ (${WHO[to].name}은 아직 알림을 안 켰어)`);
+}
+
+async function initNow() {
+  renderNow();
+  nowSt.store = await openStore(await sha256hex(state.docId + ':now'), 'couple-now-local', $('nowStatus'), '문패');
+  let first = true;
+  nowSt.store.subscribe((v) => {
+    const next = normNow(v), p = partnerOf(getMe());
+    const moved = !first && p && next[p] && (!nowSt.data[p] || nowSt.data[p].at !== next[p].at);
+    nowSt.data = next; nowSt.loaded = true; first = false;
+    renderNow();
+    if (moved) { const d = $('nowDoor-' + p); d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
+  });
+  clearInterval(nowSt.timer);
+  nowSt.timer = setInterval(() => { if (!document.hidden) renderNow(); }, 60000);   // "N분 전부터" 갱신
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) renderNow();
+    else if (nowSt.pending) flushNowNotify();   // 바꾸고 바로 앱 닫아도 알림은 가게
+  });
+  addEventListener('pagehide', () => { if (nowSt.pending) flushNowNotify(); });
+}
+
 /* ====================== 🧩 메뉴 고르기 (보이기 · 순서, 이 기기) ====================== */
 // ⚙️ 설정에서 이 기기에 보일 메뉴랑 순서를 골라. localStorage 'couple-layout' = { order: [key…], hidden: [key…] }
 // 섹션 key는 index.html 의 <section data-sec="…">. 새 섹션은 data-sec만 붙이면 기본 위치에 알아서 들어가.
 // 숨긴 메뉴도 데이터는 계속 불러와 (예: 숨겨도 사진·질문 하면 키우기 간식은 쌓여)
 const LAYOUT_KEY = 'couple-layout';
 const SEC_INFO = {
-  intro: '🎨 첫 화면 그림', gallery: '📷 갤러리', calendar: '📅 일정', bucket: '✅ 버킷리스트',
+  intro: '🎨 첫 화면 그림', now: '🚪 지금 뭐해?', gallery: '📷 갤러리', calendar: '📅 일정', bucket: '✅ 버킷리스트',
   recipe: '🍳 우리들의 레시피', pet: '🐶 같이 키우기', grape: '🍇 포도 심기', qna: '💬 서로 더 알아가기',
 };
 const secEls = (k) => [...document.querySelectorAll(`.scene[data-sec="${k}"]`)];
@@ -3176,7 +3321,7 @@ async function renderPush() {
     note.textContent = '이 기기로 알림이 와 (누르면 끄기)';
   } else {
     btn.textContent = '🔔 알림 켜기';
-    note.textContent = '상대가 이모티콘·질문·사진·일정을 올리면 알려 줘';
+    note.textContent = '상대가 이모티콘·질문·사진·일정·지금 뭐해?를 올리면 알려 줘';
   }
 }
 
