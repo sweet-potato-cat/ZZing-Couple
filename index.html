@@ -874,16 +874,22 @@
 
   /* 🚪 지금 뭐해? (교수님 방 문패) — 내 문패 줄을 누르면 자석(●)이 옮겨가고 상대한테 알림 */
   .now-doors{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .now-door{border:var(--line);border-radius:14px;background:var(--bear);padding:10px 7px 8px;box-shadow:0 4px 0 var(--ink);display:flex;flex-direction:column;gap:6px;min-width:0}
+  .now-door{border:var(--line);border-radius:14px;background:var(--bear);padding:10px 5px 8px;box-shadow:0 4px 0 var(--ink);display:flex;flex-direction:column;gap:6px;min-width:0}
   .now-door.bunny{background:#FDE7EA}
   .nd-who{font-family:var(--hand);font-weight:700;font-size:1.25rem;display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
   .nd-tag{font-size:.75rem;border:2px solid var(--ink);border-radius:999px;background:var(--paper);padding:0 6px 1px;flex:none}
-  .nd-list{display:flex;flex-direction:column;gap:3px;background:var(--paper);border:2px solid var(--ink);border-radius:10px;padding:4px 4px 4px 7px}
-  .nd-row{position:relative;display:flex;align-items:center;gap:5px;width:100%;min-height:36px;border:2px solid transparent;border-radius:8px;background:transparent;padding:2px 5px 2px 8px;font-family:var(--hand);font-size:1.12rem;text-align:left;color:var(--ink);cursor:pointer;transition:background .15s,opacity .15s}
+  .nd-list{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;background:var(--paper);border:2px solid var(--ink);border-radius:10px}
+  .nd-list::-webkit-scrollbar{display:none}
+  .nd-page{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;gap:3px;padding:4px 3px 4px 8px}
+  .nd-dots{display:flex;justify-content:center;gap:7px;margin-top:-1px}
+  .nd-dots button{width:10px;height:10px;padding:0;border-radius:50%;border:2px solid var(--ink);background:var(--paper);cursor:pointer}
+  .nd-dots button.has{background:var(--heart)}
+  .nd-dots button[aria-current="true"]{width:22px;border-radius:999px}
+  .nd-row{position:relative;display:flex;align-items:center;gap:5px;width:100%;min-height:36px;border:2px solid transparent;border-radius:8px;background:transparent;padding:2px 3px 2px 7px;font-family:var(--hand);font-size:1.12rem;text-align:left;color:var(--ink);cursor:pointer;transition:background .15s,opacity .15s}
   .nd-row:disabled{cursor:default;opacity:1;-webkit-text-fill-color:var(--ink)}
-  .nd-e{flex:none;width:1.3em;text-align:center}
+  .nd-e{flex:none;width:1.25em;text-align:center}
   .nd-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .nd-mag{position:absolute;left:-8px;top:50%;width:13px;height:13px;margin-top:-6.5px;border-radius:50%;display:none}   /* 자석: 고른 줄 왼쪽 끝에 붙어 */
+  .nd-mag{position:absolute;left:-6px;top:50%;width:13px;height:13px;margin-top:-6.5px;border-radius:50%;display:none}   /* 자석: 고른 줄 왼쪽 끝에 붙어 */
   .nd-row.on{background:var(--c);border-color:var(--ink);font-weight:700}
   .nd-row.on .nd-mag{display:block;border:2px solid var(--ink);background:var(--heart);box-shadow:0 2px 0 var(--ink)}
   .now-door:not(.mine) .nd-row:not(.on){opacity:.4}

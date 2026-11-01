@@ -1825,6 +1825,8 @@ function hideDotLabelSoon() {
 // 상태 추가·순서·색은 NOW_LIST 만 고치면 돼 (⚠️ k는 바꾸지 말기 — 저장된 값이 k라서)
 const NOW_LIST = [
   { k: 'work', e: '💼', t: '근로중!', c: '#FBEEDD' },
+  { k: 'study', e: '📚', t: '공부중!', c: '#F1E3FB' },
+  { k: 'task', e: '💻', t: '작업중!', c: '#FFE3D1' },
   { k: 'meet', e: '🗣️', t: '미팅중!', c: '#EAF3FC' },
   { k: 'eat', e: '🍚', t: '식사중!', c: '#FFF1C2' },
   { k: 'free', e: '😊', t: '안바쁨!', c: '#DDF0D9' },
@@ -1834,6 +1836,7 @@ const NOW_LIST = [
   { k: 'sleep', e: '😴', t: '자는중!', c: '#D9DCF2' },
 ];
 const NOW_BY = Object.fromEntries(NOW_LIST.map((x) => [x.k, x]));
+const NOW_PER_PAGE = 5;           // 문패 한 장에 5줄 → 넘치면 옆으로 넘기기
 const NOW_STALE = 12 * 3600000;   // 12시간 넘게 그대로면 흐리게 + "오래됐어" (같은 걸 다시 누르면 새로 걸기)
 const NOW_NOTIFY_WAIT = 2500;     // 이 시간(ms) 안에 또 바꾸면 알림은 마지막 것 하나만
 const nowSt = { store: null, data: {}, loaded: false, timer: 0, notifyT: 0, pending: null, msgT: 0 };
@@ -1854,12 +1857,16 @@ function nowMsg(t) {
 
 function buildNow() {
   const box = $('nowDoors'); box.innerHTML = '';
+  const pages = Math.ceil(NOW_LIST.length / NOW_PER_PAGE);
   for (const w of ['bear', 'bunny']) {
     const door = document.createElement('div');
     door.className = `now-door ${w}`; door.id = 'nowDoor-' + w;
     const head = document.createElement('div'); head.className = 'nd-who';
+    // 5줄씩 한 장 → 옆으로 넘기기 (scroll-snap)
     const list = document.createElement('div'); list.className = 'nd-list'; list.setAttribute('role', 'group');
-    for (const x of NOW_LIST) {
+    let page = null;
+    NOW_LIST.forEach((x, i) => {
+      if (i % NOW_PER_PAGE === 0) { page = document.createElement('div'); page.className = 'nd-page'; list.appendChild(page); }
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'nd-row'; b.dataset.s = x.k; b.style.setProperty('--c', x.c);
       const e = document.createElement('span'); e.className = 'nd-e'; e.textContent = x.e;
@@ -1867,11 +1874,40 @@ function buildNow() {
       const m = document.createElement('i'); m.className = 'nd-mag'; m.setAttribute('aria-hidden', 'true');
       b.append(e, t, m);
       b.addEventListener('click', () => setNow(w, x.k));
-      list.appendChild(b);
+      page.appendChild(b);
+    });
+    const dots = document.createElement('div'); dots.className = 'nd-dots'; dots.hidden = pages < 2;
+    for (let p = 0; p < pages; p++) {
+      const d = document.createElement('button'); d.type = 'button';
+      d.setAttribute('aria-label', `${WHO[w].name} 문패 ${p + 1}번째 장`);
+      d.addEventListener('click', () => list.scrollTo({ left: p * list.clientWidth, behavior: 'smooth' }));
+      dots.appendChild(d);
     }
+    list.addEventListener('scroll', () => requestAnimationFrame(() => nowSyncDots(door)), { passive: true });
     const tm = document.createElement('div'); tm.className = 'nd-time';
-    door.append(head, list, tm);
+    door.append(head, list, dots, tm);
     box.appendChild(door);
+  }
+}
+// 지금 보는 장 표시 + 지금 상태가 있는 장엔 빨간 점
+function nowSyncDots(door) {
+  const list = door.querySelector('.nd-list'), w = list.clientWidth;
+  const cur = w ? Math.round(list.scrollLeft / w) : 0;
+  const on = NOW_LIST.findIndex((x) => x.k === door.dataset.on);
+  [...door.querySelectorAll('.nd-dots button')].forEach((d, i) => {
+    d.setAttribute('aria-current', String(i === cur));
+    d.classList.toggle('has', on >= 0 && Math.floor(on / NOW_PER_PAGE) === i);
+  });
+}
+// 상태가 바뀌면 그 상태가 있는 장으로 넘겨 주기 (처음엔 바로, 그다음엔 부드럽게)
+function nowShowPage(door, k) {
+  if (!nowSt.loaded || door.dataset.on === (k || '')) return;
+  const first = !('on' in door.dataset);
+  door.dataset.on = k || '';
+  const i = NOW_LIST.findIndex((x) => x.k === k), list = door.querySelector('.nd-list');
+  if (i >= 0 && list.clientWidth) {
+    const left = Math.floor(i / NOW_PER_PAGE) * list.clientWidth;
+    if (Math.abs(list.scrollLeft - left) > 2) list.scrollTo({ left, behavior: first ? 'auto' : 'smooth' });
   }
 }
 
@@ -1896,6 +1932,8 @@ function renderNow() {
       b.disabled = !mine;
       b.setAttribute('aria-pressed', String(on));
     });
+    nowShowPage(door, cur && cur.s);
+    nowSyncDots(door);
     door.querySelector('.nd-time').textContent = !nowSt.loaded ? '불러오는 중…'
       : cur ? nowSince(cur.at) + (stale ? ' · 오래됐어' : '')
       : mine ? '아직 안 걸었어 · 눌러서 걸기' : '아직 안 걸었어';
