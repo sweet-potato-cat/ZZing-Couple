@@ -1836,7 +1836,7 @@ const NOW_LIST = [
   { k: 'sleep', e: '😴', t: '자는중!', c: '#D9DCF2' },
 ];
 const NOW_BY = Object.fromEntries(NOW_LIST.map((x) => [x.k, x]));
-const NOW_PER_PAGE = 5;           // 문패 한 장에 5줄 → 넘치면 옆으로 넘기기
+const NOW_PER_PAGE = 5;           // 문패 한 장에 5줄 → 넘치면 위아래로 넘기기 (바꾸면 index.html .nd-list 의 --rows 도 같이)
 const NOW_STALE = 12 * 3600000;   // 12시간 넘게 그대로면 흐리게 + "오래됐어" (같은 걸 다시 누르면 새로 걸기)
 const NOW_NOTIFY_WAIT = 2500;     // 이 시간(ms) 안에 또 바꾸면 알림은 마지막 것 하나만
 const nowSt = { store: null, data: {}, loaded: false, timer: 0, notifyT: 0, pending: null, msgT: 0 };
@@ -1862,7 +1862,7 @@ function buildNow() {
     const door = document.createElement('div');
     door.className = `now-door ${w}`; door.id = 'nowDoor-' + w;
     const head = document.createElement('div'); head.className = 'nd-who';
-    // 5줄씩 한 장 → 옆으로 넘기기 (scroll-snap)
+    // 5줄씩 한 장 → 위아래로 넘기기 (scroll-snap)
     const list = document.createElement('div'); list.className = 'nd-list'; list.setAttribute('role', 'group');
     let page = null;
     NOW_LIST.forEach((x, i) => {
@@ -1880,19 +1880,20 @@ function buildNow() {
     for (let p = 0; p < pages; p++) {
       const d = document.createElement('button'); d.type = 'button';
       d.setAttribute('aria-label', `${WHO[w].name} 문패 ${p + 1}번째 장`);
-      d.addEventListener('click', () => list.scrollTo({ left: p * list.clientWidth, behavior: 'smooth' }));
+      d.addEventListener('click', () => list.scrollTo({ top: p * list.clientHeight, behavior: 'smooth' }));
       dots.appendChild(d);
     }
     list.addEventListener('scroll', () => requestAnimationFrame(() => nowSyncDots(door)), { passive: true });
+    const body = document.createElement('div'); body.className = 'nd-body'; body.append(list, dots);
     const tm = document.createElement('div'); tm.className = 'nd-time';
-    door.append(head, list, dots, tm);
+    door.append(head, body, tm);
     box.appendChild(door);
   }
 }
 // 지금 보는 장 표시 + 지금 상태가 있는 장엔 빨간 점
 function nowSyncDots(door) {
-  const list = door.querySelector('.nd-list'), w = list.clientWidth;
-  const cur = w ? Math.round(list.scrollLeft / w) : 0;
+  const list = door.querySelector('.nd-list'), h = list.clientHeight;
+  const cur = h ? Math.round(list.scrollTop / h) : 0;
   const on = NOW_LIST.findIndex((x) => x.k === door.dataset.on);
   [...door.querySelectorAll('.nd-dots button')].forEach((d, i) => {
     d.setAttribute('aria-current', String(i === cur));
@@ -1905,9 +1906,9 @@ function nowShowPage(door, k) {
   const first = !('on' in door.dataset);
   door.dataset.on = k || '';
   const i = NOW_LIST.findIndex((x) => x.k === k), list = door.querySelector('.nd-list');
-  if (i >= 0 && list.clientWidth) {
-    const left = Math.floor(i / NOW_PER_PAGE) * list.clientWidth;
-    if (Math.abs(list.scrollLeft - left) > 2) list.scrollTo({ left, behavior: first ? 'auto' : 'smooth' });
+  if (i >= 0 && list.clientHeight) {
+    const top = Math.floor(i / NOW_PER_PAGE) * list.clientHeight;
+    if (Math.abs(list.scrollTop - top) > 2) list.scrollTo({ top, behavior: first ? 'auto' : 'smooth' });
   }
 }
 
