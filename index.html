@@ -872,40 +872,43 @@
   .qa-listmore{margin-top:8px;border:2px solid var(--ink);border-radius:999px;background:var(--paper);padding:1px 14px 3px;font-family:var(--hand);font-size:1.05rem;cursor:pointer}
   .dot-rail button.has-new i{background:#E8696A;box-shadow:0 0 0 3px #FFD3D3}
 
-  /* 🚪 지금 뭐해? (교수님 방 문패) — 내 문패 줄을 누르면 자석(●)이 옮겨가고 상대한테 알림 */
-  .now-doors{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .now-door{border:var(--line);border-radius:14px;background:var(--bear);padding:10px 5px 8px;box-shadow:0 4px 0 var(--ink);display:flex;flex-direction:column;gap:6px;min-width:0}
-  .now-door.bunny{background:#FDE7EA}
+  /* 🚪 지금 뭐해? (교수님 방 문패) — 위: 상대 지금 상태 / 아래: 내 문패 (줄을 누르면 자석●이 옮겨가고 상대한테 알림) */
+  .now-doors{display:flex;flex-direction:column;gap:14px}
+  .now-them,.now-door{border:var(--line);border-radius:14px;background:var(--bear);box-shadow:0 4px 0 var(--ink)}
+  .now-them.bunny,.now-door.bunny{background:#FDE7EA}
+  .now-them{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 12px 8px}
+  .nt-who{font-family:var(--hand);font-weight:700;font-size:1.2rem}
+  .nt-plate{display:inline-flex;align-items:center;gap:8px;min-width:min(100%,220px);justify-content:center;padding:6px 18px 8px;background:var(--c,var(--paper));border:var(--line);border-radius:12px;font-family:var(--hand);font-weight:700;font-size:1.7rem;box-shadow:0 3px 0 var(--ink);position:relative}
+  .nt-plate::before{content:'';position:absolute;left:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;border:2px solid var(--ink);background:var(--heart);box-shadow:0 2px 0 var(--ink)}
+  .nt-plate.none{background:var(--paper);color:#888;font-size:1.25rem;font-weight:400;box-shadow:none;border-style:dashed}
+  .nt-plate.none::before{display:none}
+  .now-them.stale .nt-plate{filter:saturate(.35);opacity:.7}
+  .now-door{display:flex;flex-direction:column;gap:6px;padding:10px 8px 8px;min-width:0}
   .nd-who{font-family:var(--hand);font-weight:700;font-size:1.25rem;display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
   .nd-tag{font-size:.75rem;border:2px solid var(--ink);border-radius:999px;background:var(--paper);padding:0 6px 1px;flex:none}
-  /* 5줄씩 한 장 → 문패 위에서 위아래로 쓸어 넘기기 (직접 만든 제스처: 아이폰에서 페이지 스크롤이랑 안 싸우게)
-     첫 장에서 아래로 / 마지막 장에서 위로 더 쓸면 옆 섹션으로 넘어가 */
-  .now-door{--rows:5}
-  .nd-list{position:relative;overflow:hidden;height:calc(var(--rows) * 36px + (var(--rows) - 1) * 3px + 12px);touch-action:none;background:var(--paper);border:2px solid var(--ink);border-radius:10px}
-  .nd-track{transition:transform .28s cubic-bezier(.3,.8,.4,1);will-change:transform}
-  .nd-page{height:calc(var(--rows) * 36px + (var(--rows) - 1) * 3px + 8px);display:flex;flex-direction:column;gap:3px;padding:4px 3px 4px 8px}
-  .nd-ctl{display:flex;align-items:center;justify-content:center;gap:6px}
-  .nd-ctl[hidden]{display:none}
-  .nd-ctl button{position:relative;width:32px;height:22px;padding:0;border:2px solid var(--ink);border-radius:999px;background:var(--paper);font-size:.7rem;line-height:1;cursor:pointer}
-  .nd-ctl button:disabled{opacity:.3;cursor:default}
-  .nd-ctl button.has::after{content:'';position:absolute;top:-5px;right:-5px;width:10px;height:10px;border-radius:50%;background:var(--heart);border:2px solid var(--ink)}   /* 지금 상태가 그쪽 장에 있어 */
-  .nd-pg{font-size:.8rem;color:#555;min-width:2.2em;text-align:center}
-  .nd-row{position:relative;flex:none;display:flex;align-items:center;gap:5px;width:100%;height:36px;border:2px solid transparent;border-radius:8px;background:transparent;padding:2px 3px 2px 7px;font-family:var(--hand);font-size:1.12rem;text-align:left;color:var(--ink);cursor:pointer;transition:background .15s,opacity .15s}
-  .now-door:not(.mine) .nd-row{cursor:default}
-  .nd-e{flex:none;width:1.25em;text-align:center}
+  /* 내 문패: 5줄씩 한 장 → 옆으로 넘기기 (scroll-snap, 세로 스크롤은 페이지로 그대로) */
+  .nd-list{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;background:var(--paper);border:2px solid var(--ink);border-radius:10px}
+  .nd-list::-webkit-scrollbar{display:none}
+  .nd-page{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;gap:3px;padding:4px 6px 4px 12px}
+  .nd-row{position:relative;flex:none;display:flex;align-items:center;gap:8px;width:100%;height:38px;border:2px solid transparent;border-radius:8px;background:transparent;padding:2px 8px 2px 10px;font-family:var(--hand);font-size:1.2rem;text-align:left;color:var(--ink);cursor:pointer;transition:background .15s}
+  .nd-e{flex:none;width:1.4em;text-align:center}
   .nd-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .nd-mag{position:absolute;left:-6px;top:50%;width:13px;height:13px;margin-top:-6.5px;border-radius:50%;display:none}   /* 자석: 고른 줄 왼쪽 끝에 붙어 */
+  .nd-mag{position:absolute;left:-9px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;display:none}   /* 자석: 고른 줄 왼쪽 끝에 붙어 */
   .nd-row.on{background:var(--c);border-color:var(--ink);font-weight:700}
   .nd-row.on .nd-mag{display:block;border:2px solid var(--ink);background:var(--heart);box-shadow:0 2px 0 var(--ink)}
-  .now-door:not(.mine) .nd-row:not(.on){opacity:.4}
-  .now-door.mine .nd-row:not(.on):active{background:var(--mint)}
+  .nd-row:not(.on):active{background:var(--mint)}
   .now-door.stale .nd-row.on{filter:saturate(.35);opacity:.7}
+  /* 아래 점 (글자 대신 CSS 도형: 아이폰 폰트에 따라 ▲ 같은 기호가 네모로 깨져서) */
+  .nd-dots{display:flex;justify-content:center;align-items:center;gap:8px;min-height:14px}
+  .nd-dots[hidden]{display:none}
+  .nd-dots button{-webkit-appearance:none;appearance:none;width:11px;height:11px;padding:0;border-radius:999px;border:2px solid var(--ink);background:var(--paper);cursor:pointer;transition:width .2s}
+  .nd-dots button[aria-current="true"]{width:24px}
+  .nd-dots button.has{background:var(--heart)}
   .nd-time{font-size:.85rem;color:#555;text-align:center;min-height:1.2em}
-  .now-door.flash{animation:ndflash .9s ease}
+  .now-them.flash{animation:ndflash .9s ease}
   @keyframes ndflash{20%{transform:rotate(-2deg) scale(1.03)}50%{transform:rotate(2deg)}80%{transform:rotate(-1deg)}}
   .now-msg{min-height:1.4em;margin:12px 0 0;font-family:var(--hand);font-size:1.15rem;text-align:center}
-  @media (max-width:400px){ .now-doors{gap:8px} .now-door{padding:8px 4px 7px} .nd-page{padding:4px 2px 4px 6px} .nd-row{font-size:1rem;gap:2px;padding:2px 2px 2px 5px} .nd-e{width:1.15em} }
-  @media (prefers-reduced-motion: reduce){ .now-door.flash{animation:none} }
+  @media (prefers-reduced-motion: reduce){ .now-them.flash{animation:none} .nd-dots button{transition:none} }
 </style>
 </head>
 <body>
