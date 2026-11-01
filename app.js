@@ -1840,7 +1840,7 @@ const NOW_LIST = [
   { k: 'sleep', e: '😴', t: '자는중!', c: '#D9DCF2' },
 ];
 const NOW_BY = Object.fromEntries(NOW_LIST.map((x) => [x.k, x]));
-const NOW_PER_PAGE = 5;           // 문패 한 장에 5줄 → 넘치면 위아래로 넘기기 (바꾸면 index.html .nd-list 의 --rows 도 같이)
+const NOW_PER_PAGE = 5;           // 문패 한 장에 5줄 → 넘치면 위아래로 쓸어 넘기기 (바꾸면 index.html .now-door 의 --rows 도 같이)
 const NOW_STALE = 12 * 3600000;   // 12시간 넘게 그대로면 흐리게 + "오래됐어" (같은 걸 다시 누르면 새로 걸기)
 const NOW_NOTIFY_WAIT = 2500;     // 이 시간(ms) 안에 또 바꾸면 알림은 마지막 것 하나만
 const nowSt = { store: null, data: {}, loaded: false, timer: 0, notifyT: 0, pending: null, msgT: 0 };
@@ -1859,61 +1859,130 @@ function nowMsg(t) {
   clearTimeout(nowSt.msgT); nowSt.msgT = setTimeout(() => { el.textContent = ''; }, 5000);
 }
 
+const nowPages = () => Math.ceil(NOW_LIST.length / NOW_PER_PAGE);
+
 function buildNow() {
   const box = $('nowDoors'); box.innerHTML = '';
-  const pages = Math.ceil(NOW_LIST.length / NOW_PER_PAGE);
   for (const w of ['bear', 'bunny']) {
     const door = document.createElement('div');
-    door.className = `now-door ${w}`; door.id = 'nowDoor-' + w;
+    door.className = `now-door ${w}`; door.id = 'nowDoor-' + w; door._pg = 0;
     const head = document.createElement('div'); head.className = 'nd-who';
-    // 5줄씩 한 장 → 위아래로 넘기기 (scroll-snap)
+    // 5줄씩 한 장(.nd-page)을 세로로 쌓은 track 을 위아래로 옮겨서 넘기기
     const list = document.createElement('div'); list.className = 'nd-list'; list.setAttribute('role', 'group');
+    const track = document.createElement('div'); track.className = 'nd-track';
     let page = null;
     NOW_LIST.forEach((x, i) => {
-      if (i % NOW_PER_PAGE === 0) { page = document.createElement('div'); page.className = 'nd-page'; list.appendChild(page); }
+      if (i % NOW_PER_PAGE === 0) { page = document.createElement('div'); page.className = 'nd-page'; track.appendChild(page); }
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'nd-row'; b.dataset.s = x.k; b.style.setProperty('--c', x.c);
       const e = document.createElement('span'); e.className = 'nd-e'; e.textContent = x.e;
       const t = document.createElement('span'); t.className = 'nd-t'; t.textContent = x.t;
       const m = document.createElement('i'); m.className = 'nd-mag'; m.setAttribute('aria-hidden', 'true');
       b.append(e, t, m);
-      b.addEventListener('click', () => setNow(w, x.k));
+      b.addEventListener('click', () => { if (list.dataset.swiped) return; setNow(w, x.k); });   // 쓸어 넘긴 거면 누른 걸로 안 쳐
       page.appendChild(b);
     });
-    const dots = document.createElement('div'); dots.className = 'nd-dots'; dots.hidden = pages < 2;
-    for (let p = 0; p < pages; p++) {
-      const d = document.createElement('button'); d.type = 'button';
-      d.setAttribute('aria-label', `${WHO[w].name} 문패 ${p + 1}번째 장`);
-      d.addEventListener('click', () => list.scrollTo({ top: p * list.clientHeight, behavior: 'smooth' }));
-      dots.appendChild(d);
-    }
-    list.addEventListener('scroll', () => requestAnimationFrame(() => nowSyncDots(door)), { passive: true });
-    const body = document.createElement('div'); body.className = 'nd-body'; body.append(list, dots);
+    list.appendChild(track);
+    // 아래: ︿ 1/2 ﹀ (눌러도 넘어가, 지금 상태가 다른 장에 있으면 그쪽 버튼에 빨간 점)
+    const ctl = document.createElement('div'); ctl.className = 'nd-ctl'; ctl.hidden = nowPages() < 2;
+    const btn = (txt, dir, aria) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
+      b.setAttribute('aria-label', `${WHO[w].name} 문패 ${aria}`);
+      b.addEventListener('click', () => nowGo(door, door._pg + dir));
+      return b;
+    };
+    const pg = document.createElement('span'); pg.className = 'nd-pg';
+    ctl.append(btn('▲', -1, '위 장'), pg, btn('▼', 1, '아래 장'));
     const tm = document.createElement('div'); tm.className = 'nd-time';
-    door.append(head, body, tm);
+    door.append(head, list, ctl, tm);
     box.appendChild(door);
+    nowSwipe(door, list, track);
   }
 }
-// 지금 보는 장 표시 + 지금 상태가 있는 장엔 빨간 점
-function nowSyncDots(door) {
-  const list = door.querySelector('.nd-list'), h = list.clientHeight;
-  const cur = h ? Math.round(list.scrollTop / h) : 0;
-  const on = NOW_LIST.findIndex((x) => x.k === door.dataset.on);
-  [...door.querySelectorAll('.nd-dots button')].forEach((d, i) => {
-    d.setAttribute('aria-current', String(i === cur));
-    d.classList.toggle('has', on >= 0 && Math.floor(on / NOW_PER_PAGE) === i);
-  });
+
+// door 를 pg 번째 장으로 (animate=false 면 바로)
+function nowGo(door, pg, animate = true) {
+  const n = nowPages();
+  door._pg = Math.max(0, Math.min(n - 1, pg));
+  const track = door.querySelector('.nd-track');
+  track.style.transition = animate ? '' : 'none';
+  track.style.transform = `translateY(${(-door._pg * 100) / n}%)`;
+  if (!animate) { void track.offsetHeight; track.style.transition = ''; }
+  nowSyncCtl(door);
 }
-// 상태가 바뀌면 그 상태가 있는 장으로 넘겨 주기 (처음엔 바로, 그다음엔 부드럽게)
+function nowSyncCtl(door) {
+  const n = nowPages(), pg = door._pg || 0;
+  const [up, down] = door.querySelectorAll('.nd-ctl button');
+  door.querySelector('.nd-pg').textContent = `${pg + 1}/${n}`;
+  up.disabled = pg <= 0; down.disabled = pg >= n - 1;
+  const on = NOW_LIST.findIndex((x) => x.k === door.dataset.on), onPg = on >= 0 ? Math.floor(on / NOW_PER_PAGE) : -1;
+  up.classList.toggle('has', onPg >= 0 && onPg < pg);
+  down.classList.toggle('has', onPg > pg);
+}
+// 상태가 바뀌면 그 상태가 있는 장으로 (처음엔 바로, 그다음엔 부드럽게)
 function nowShowPage(door, k) {
   if (!nowSt.loaded || door.dataset.on === (k || '')) return;
   const first = !('on' in door.dataset);
   door.dataset.on = k || '';
-  const i = NOW_LIST.findIndex((x) => x.k === k), list = door.querySelector('.nd-list');
-  if (i >= 0 && list.clientHeight) {
-    const top = Math.floor(i / NOW_PER_PAGE) * list.clientHeight;
-    if (Math.abs(list.scrollTop - top) > 2) list.scrollTo({ top, behavior: first ? 'auto' : 'smooth' });
-  }
+  const i = NOW_LIST.findIndex((x) => x.k === k);
+  if (i >= 0) nowGo(door, Math.floor(i / NOW_PER_PAGE), !first);
+}
+// 첫 장에서 아래로 / 마지막 장에서 위로 더 쓸면 옆 섹션으로
+function nowLeave(dir) {
+  const i = nav.secs.indexOf(document.querySelector('.scene[data-sec="now"]'));
+  if (i >= 0) goToSection(i + dir, 'smooth');
+}
+
+// 👆 문패 위아래로 쓸기 (직접 만든 제스처)
+//   브라우저 기본 스크롤(겹친 세로 스크롤)은 아이폰에서 바깥 페이지(섹션 넘기기)랑 싸워서 안 넘어갔어
+//   → 문패는 touch-action:none 으로 기본 스크롤을 끄고, 손가락 따라 직접 움직인 뒤 놓으면 장 넘기기
+function nowSwipe(door, list, track) {
+  let g = null;
+  list.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    delete list.dataset.swiped;
+    g = { id: e.pointerId, y: e.clientY, t: performance.now(), dy: 0, moved: false };
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    const dy = e.clientY - g.y;
+    if (!g.moved) {
+      if (Math.abs(dy) < 8) return;   // 이 정도는 그냥 누른 것
+      g.moved = true;
+      try { list.setPointerCapture(e.pointerId); } catch {}
+    }
+    g.dy = dy;
+    const n = nowPages(), pg = door._pg || 0, h = list.clientHeight;
+    const edge = (pg === 0 && dy > 0) || (pg === n - 1 && dy < 0);   // 끝 장에선 고무줄처럼 덜 따라옴
+    track.style.transition = 'none';
+    track.style.transform = `translateY(${-pg * h + (edge ? dy * 0.3 : dy)}px)`;
+  });
+  const end = (e, cancel) => {
+    if (!g || e.pointerId !== g.id) return;
+    const { moved, dy, t } = g;
+    g = null;
+    if (!moved) return;
+    list.dataset.swiped = '1';
+    const fast = Math.abs(dy) / Math.max(1, performance.now() - t) > 0.4 && Math.abs(dy) > 20;   // 휙 튕기기
+    const dir = !cancel && (Math.abs(dy) > list.clientHeight * 0.22 || fast) ? (dy < 0 ? 1 : -1) : 0;
+    const next = (door._pg || 0) + dir;
+    if (dir && next >= 0 && next < nowPages()) nowGo(door, next);
+    else { nowGo(door, door._pg); if (dir) nowLeave(dir); }
+  };
+  list.addEventListener('pointerup', (e) => end(e, false));
+  list.addEventListener('pointercancel', (e) => end(e, true));
+  // PC 마우스 휠: 넘길 장이 있으면 문패 먼저, 끝이면 원래대로 섹션 넘기기
+  let lastFlip = 0, acc = 0;
+  list.addEventListener('wheel', (e) => {
+    if (performance.now() - lastFlip < 600) { e.preventDefault(); return; }   // 넘긴 직후 관성은 먹어 버리기
+    const dir = e.deltaY > 0 ? 1 : -1, next = (door._pg || 0) + dir;
+    if (next < 0 || next >= nowPages()) return;
+    e.preventDefault();
+    acc += e.deltaY;
+    if (Math.abs(acc) < 30) return;
+    acc = 0; lastFlip = performance.now();
+    nowGo(door, next);
+  }, { passive: false });
 }
 
 function renderNow() {
@@ -1934,11 +2003,12 @@ function renderNow() {
     door.querySelectorAll('.nd-row').forEach((b) => {
       const on = !!cur && cur.s === b.dataset.s;
       b.classList.toggle('on', on);
-      b.disabled = !mine;
+      // disabled 대신 aria-disabled: disabled 버튼은 터치 이벤트를 안 받아서 상대 문패를 쓸어 넘길 수가 없어 (누르는 건 setNow 에서 막음)
+      b.setAttribute('aria-disabled', String(!mine)); b.tabIndex = mine ? 0 : -1;
       b.setAttribute('aria-pressed', String(on));
     });
     nowShowPage(door, cur && cur.s);
-    nowSyncDots(door);
+    nowSyncCtl(door);
     door.querySelector('.nd-time').textContent = !nowSt.loaded ? '불러오는 중…'
       : cur ? nowSince(cur.at) + (stale ? ' · 오래됐어' : '')
       : mine ? '아직 안 걸었어 · 눌러서 걸기' : '아직 안 걸었어';
