@@ -1718,6 +1718,72 @@ document.querySelectorAll('.scene').forEach((s) => {
   s.appendChild(a);
 });
 
+/* ====================== 긴 섹션 안에서는 부드럽게 ====================== */
+// 페이지는 "한 번 스와이프 = 한 섹션" (mandatory 스냅). 그런데 화면보다 긴 섹션(포도 심기·레시피·일정…) 안에서도
+// 스냅이 걸려 있으면 아이폰에서 툭툭 끊기며 올라가 → 긴 섹션 안을 보고 있을 땐 스냅을 느슨하게(proximity) 풀어서 손가락 따라 부드럽게.
+//   - 긴 섹션 맨 위에서 위로 / 맨 아래에서 아래로 넘기는 손짓 = 섹션 밖으로 → 다시 한 칸씩(mandatory)
+//   - 멈췄을 때 섹션 두 개에 걸쳐 있으면 가까운 쪽으로 살짝 맞춰 줌
+const snap = { free: false, y0: null, decided: false, idleT: 0 };
+function setSnapFree(on) {
+  if (snap.free === on) return;
+  snap.free = on;
+  $('scroller').classList.toggle('free', on);
+}
+// 지금 화면이 통째로 들어 있는 '화면보다 긴 섹션' → { top, bottom, atTop, atBottom } | null
+function tallSpan() {
+  const sc = $('scroller'), y = sc.scrollTop, vh = sc.clientHeight;
+  for (const s of document.querySelectorAll('.scene')) {
+    if (s.hidden || s.offsetHeight <= vh + 8) continue;
+    const a = s.offsetTop, b = a + s.offsetHeight;
+    if (y >= a - 3 && y + vh <= b + 3) return { atTop: y <= a + 3, atBottom: y + vh >= b - 3 };
+  }
+  return null;
+}
+// dir: +1 = 아래 내용 보기(손가락 위로 쓸기), -1 = 위 내용 보기, 0 = 멈춰 있음
+function decideSnap(dir) {
+  const t = tallSpan();
+  if (!t || (t.atTop && dir < 0) || (t.atBottom && dir > 0)) setSnapFree(false);
+  else setSnapFree(true);
+}
+// 멈췄는데 섹션 경계에 어정쩡하게 걸쳐 있으면 가까운 멈출 자리(섹션 시작 / 긴 섹션 끝)로
+function snapSettle() {
+  const sc = $('scroller'), y = sc.scrollTop, vh = sc.clientHeight;
+  if (tallSpan()) return;
+  const stops = [];
+  document.querySelectorAll('.scene').forEach((s) => {
+    if (s.hidden) return;
+    stops.push(s.offsetTop);
+    if (s.offsetHeight > vh + 8) stops.push(s.offsetTop + s.offsetHeight - vh);
+  });
+  const near = stops.reduce((b, v) => (Math.abs(v - y) < Math.abs(b - y) ? v : b), stops[0] || 0);
+  if (Math.abs(near - y) > 3) sc.scrollTo({ top: near, behavior: 'smooth' });
+}
+(() => {
+  const sc = $('scroller');
+  if (!sc) return;
+  sc.addEventListener('touchstart', (e) => { snap.y0 = e.touches[0].clientY; snap.decided = false; }, { passive: true });
+  sc.addEventListener('touchmove', (e) => {
+    if (snap.decided || snap.y0 == null) return;
+    const dy = e.touches[0].clientY - snap.y0;
+    if (Math.abs(dy) < 4) return;
+    snap.decided = true;
+    decideSnap(dy < 0 ? 1 : -1);   // 손가락 위로 = 아래 내용
+  }, { passive: true });
+  sc.addEventListener('wheel', (e) => { if (e.deltaY) decideSnap(Math.sign(e.deltaY)); }, { passive: true });
+  // 스크롤이 멈추면: 긴 섹션 안이면 계속 부드럽게, 아니면 한 칸씩 + 걸쳐 있으면 맞추기
+  const idle = () => {
+    clearTimeout(snap.idleT);
+    snap.idleT = setTimeout(() => {
+      const was = snap.free;
+      decideSnap(0);
+      if (was && !snap.free) setTimeout(snapSettle, 80);   // 다시 한 칸씩으로 바꿨는데도 걸쳐 있으면 (브라우저가 안 맞춰 줬으면) 직접 맞추기
+    }, 160);
+  };
+  sc.addEventListener('scroll', idle, { passive: true });
+  addEventListener('resize', () => decideSnap(0));
+  decideSnap(0);
+})();
+
 /* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
 // .scene[data-nav="이름"] 이 있는 섹션마다 점이 하나씩 자동으로 생겨 (새 섹션도 data-nav만 붙이면 됨)
 // 점 누르기 → 그 섹션으로 / 점 위를 위아래로 끌기 → 이름 보면서 빠르게 이동
