@@ -114,8 +114,8 @@
     overscroll-behavior-y:none;   /* 맨 위/아래에서 튕기는 동안 다음 스와이프가 씹히는 문제 */
     -webkit-overflow-scrolling:touch;
   }
-  /* 화면보다 긴 섹션 안을 보는 동안엔 스냅을 느슨하게 → 손가락 따라 부드럽게 (app.js '긴 섹션 안에서는 부드럽게') */
-  .scroller.free{scroll-snap-type:y proximity}
+  /* 화면보다 긴 섹션 안을 보는 동안엔 스냅을 꺼서 → 손가락만큼만 부드럽게 (app.js '긴 섹션 안에서는 부드럽게') */
+  .scroller.free{scroll-snap-type:none}
   .scene{
     min-height:100%;scroll-snap-align:start;scroll-snap-stop:always;
     display:flex;align-items:center;justify-content:center;
@@ -1346,6 +1346,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=smooth1"></script>
+<script type="module" src="app.js?v=smooth3"></script>
 </body>
 </html>
