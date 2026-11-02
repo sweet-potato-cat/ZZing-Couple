@@ -114,13 +114,12 @@
     overscroll-behavior-y:none;   /* 맨 위/아래에서 튕기는 동안 다음 스와이프가 씹히는 문제 */
     -webkit-overflow-scrolling:touch;
   }
-  /* 화면보다 긴 섹션 안을 보는 동안엔 스냅을 꺼서 → 손가락만큼만 부드럽게 (app.js '긴 섹션 안에서는 부드럽게') */
-  .scroller.free{scroll-snap-type:none}
-  .scene{
-    min-height:100%;scroll-snap-align:start;scroll-snap-stop:always;
-    display:flex;align-items:center;justify-content:center;
-    padding:48px 18px;position:relative;
-  }
+  /* 섹션 = 딱 한 화면 (바깥은 한 번 쓱 = 한 섹션). 내용이 화면보다 길면 섹션 '안'에서 스크롤 (.scene-in, 스냅 없이 부드럽게)
+     섹션 안 끝까지 가면 다음 쓱은 바깥으로 넘어가서 다음 섹션 (브라우저 기본 동작). 구조는 app.js 맨 위에서 자동으로 감싸 줘:
+     section.scene > div.scene-in(스크롤) > div.scene-body(내용, 짧으면 가운데) */
+  .scene{height:100%;scroll-snap-align:start;scroll-snap-stop:always;position:relative}
+  .scene-in{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;padding:48px 18px}
+  .scene-body{margin:auto 0;width:100%;display:flex;flex-direction:column;align-items:center}
 
   /* 말풍선 = 이 페이지의 시그니처 */
   .bubble{
@@ -256,7 +255,7 @@
     padding:2px 14px;position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
     white-space:nowrap;
   }
-  .scene.last{padding-bottom:80px}
+  .scene.last .scene-in{padding-bottom:80px}
 
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
@@ -328,7 +327,7 @@
       white-space:normal;width:max-content;max-width:calc(100% - 32px);
       border-radius:18px;padding:4px 14px 7px;line-height:1.45;
     }
-    .scene.last{padding-bottom:120px}
+    .scene.last .scene-in{padding-bottom:120px}
   }
 
   /* ===== 같이 키우기 ===== */
@@ -600,7 +599,7 @@
     .day{min-height:84px;padding:5px}
     .pill,.day .more{font-size:.78rem}
   }
-  .scene.cal-scene{padding-top:calc(76px + env(safe-area-inset-top,0px))}  /* 위 '만난 지' 뱃지에 안 가리게 */
+  .scene.cal-scene .scene-in{padding-top:calc(76px + env(safe-area-inset-top,0px))}  /* 위 '만난 지' 뱃지에 안 가리게 */
   .cal-day{margin-top:18px}
   .cal-day h3{font-family:var(--hand);font-weight:700;font-size:1.45rem;margin:0 0 10px}
   .who.anniv{background:#FFD3D3;border-style:dashed}
@@ -799,8 +798,6 @@
     font-family:var(--body);font-size:1rem;background:var(--paper);color:var(--ink);
   }
 
-  /* 화면보다 긴 섹션(일정·레시피)의 '맨 끝'도 멈출 자리로: 끝까지 내려가고, 다음 스와이프에 다음 섹션으로 */
-  .snap-end{position:absolute;left:0;right:0;bottom:0;height:1px;scroll-snap-align:end;pointer-events:none;visibility:hidden}
 
   /* ===== 푸시 알림 ===== */
   .push-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:10px;padding-top:10px;border-top:2px dotted #bbb}
@@ -837,7 +834,7 @@
     box-shadow:0 3px 0 var(--ink);opacity:0;pointer-events:none;transition:opacity .15s;
   }
   .dot-label.show{opacity:1}
-  @media (max-width:600px){ .scene{padding-right:34px} }   /* 점 슬라이더 자리 비워 두기 */
+  @media (max-width:600px){ .scene-in{padding-right:34px} }   /* 점 슬라이더 자리 비워 두기 */
 
   /* ===== 서로 더 알아가기 ===== */
   .qa-card{border:var(--line);border-radius:18px;background:var(--mint);padding:14px 14px 12px;box-shadow:0 4px 0 var(--ink)}
@@ -1346,6 +1343,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=smooth3"></script>
+<script type="module" src="app.js?v=inner1"></script>
 </body>
 </html>

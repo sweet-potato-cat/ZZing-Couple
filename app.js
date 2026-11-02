@@ -17,6 +17,16 @@ const REMEMBER_KEY = 'couple-key-v1';
 const ME_KEY = 'couple-me';
 
 const $ = (id) => document.getElementById(id);
+
+// 섹션 구조 감싸기: section.scene > div.scene-in(섹션 안 스크롤) > div.scene-body(내용)
+// .hint 처럼 화면에 붙어 있는(absolute) 것도 같이 들어가지만, 위치 기준은 그대로 섹션이라 괜찮아
+document.querySelectorAll('.scene').forEach((s) => {
+  if (s.querySelector(':scope > .scene-in')) return;
+  const inn = document.createElement('div'); inn.className = 'scene-in';
+  const body = document.createElement('div'); body.className = 'scene-body';
+  while (s.firstChild) body.appendChild(s.firstChild);
+  inn.appendChild(body); s.appendChild(inn);
+});
 const te = new TextEncoder();
 const td = new TextDecoder();
 
@@ -1711,120 +1721,28 @@ document.addEventListener('keydown', (e) => {
   if (!$('emoRecv').hidden) ackRecv(); else if (!$('emoPop').hidden) toggleEmoPop(false);
 });
 
-/* ====================== 스냅: 긴 섹션의 끝에도 멈출 자리 ====================== */
-document.querySelectorAll('.scene').forEach((s) => {
-  const a = document.createElement('div');
-  a.className = 'snap-end'; a.setAttribute('aria-hidden', 'true');
-  s.appendChild(a);
-});
-
-/* ====================== 긴 섹션 안에서는 부드럽게 ====================== */
-// 페이지는 "한 번 쓱 = 한 섹션" (mandatory 스냅). 그런데 화면보다 긴 섹션(포도 심기·일정·레시피…) 안에서
-// 조금만 내리려 해도 아이폰은 스냅 때문에 섹션 끝까지 '쑥' 가 버려 (WebKit 은 긴 섹션 안에서도 스냅 자리로 끌어당김)
-// → 화면이 긴 섹션 안에 있을 땐 손대기 '전에' 스냅을 아예 꺼 둬서(.scroller.free = none) 손가락만큼만 부드럽게.
-//   ⚠️ 쓸고 있는 도중엔 스냅 종류를 안 바꿔 (도중에 바꾸면 브라우저가 헷갈려서 다음 손짓이 튕겨 나감)
-//   - 손 뗀 뒤 관성으로 긴 섹션 끝을 넘어가려 하면 → 그 끝에서 멈춤
-//   - 긴 섹션 맨 위에서 위로 / 맨 아래에서 아래로 쓸면(= 섹션 밖으로) → 옆 섹션 시작에서 멈춤 (= 한 칸)
-//   - 멈췄는데 경계에 걸쳐 있으면 움직이던 쪽으로 (60px도 안 넘어왔으면 원래 쪽으로) 맞춰 줌
-const snap = { free: false, cur: null, y0: null, decided: false, span: null, out: 0, idleT: 0, lastY: 0, dir: 0, touching: false, clampAt: 0 };
-function setSnapFree(on, span) {
-  snap.cur = on ? span : null;
-  if (snap.free === on) return;
-  snap.free = on;
-  $('scroller').classList.toggle('free', on);
-}
-// 지금 화면이 통째로 들어 있는 '화면보다 긴 섹션' → { a, b, atTop, atBottom } | null
-function tallSpan() {
-  const sc = $('scroller'), y = sc.scrollTop, vh = sc.clientHeight;
-  for (const s of document.querySelectorAll('.scene')) {
-    if (s.hidden || s.offsetHeight <= vh + 8) continue;
-    const a = s.offsetTop, b = a + s.offsetHeight;
-    if (y >= a - 3 && y + vh <= b + 3) return { a, b, atTop: y <= a + 3, atBottom: y + vh >= b - 3 };
-  }
-  return null;
-}
-const snapOutward = (t, dir) => !!t && ((t.atTop && dir < 0) || (t.atBottom && dir > 0));   // dir +1 = 아래 내용 쪽
-// 멈출 자리들: 섹션 시작 + 긴 섹션의 끝
-function snapStops() {
-  const vh = $('scroller').clientHeight, stops = [];
-  document.querySelectorAll('.scene').forEach((s) => {
-    if (s.hidden) return;
-    stops.push(s.offsetTop);
-    if (s.offsetHeight > vh + 8) stops.push(s.offsetTop + s.offsetHeight - vh);
-  });
-  return stops.sort((p, q) => p - q);
-}
-const snapNext = (y, dir) => { const st = snapStops(); return dir > 0 ? st.find((v) => v > y + 2) : st.filter((v) => v < y - 2).pop(); };
-function snapStopAt(top) {   // 관성 끊고 거기서 멈추기
-  setSnapFree(false); snap.clampAt = performance.now(); snap.out = 0;
-  $('scroller').scrollTo({ top });
-}
-function snapRest() { const t = tallSpan(); setSnapFree(!!t, t); }
-// 멈췄는데 섹션 경계에 걸쳐 있으면 멈출 자리로
-function snapSettle() {
-  const sc = $('scroller'), y = sc.scrollTop;
-  if (tallSpan()) return;
-  const stops = snapStops(), before = stops.filter((v) => v <= y).pop(), after = stops.find((v) => v > y);
-  let to;
-  if (before == null || after == null) to = before ?? after;
-  else if (snap.dir > 0) to = y - before > 60 ? after : before;   // 아래로 가던 중: 60px 넘게 넘어왔으면 다음 자리로
-  else if (snap.dir < 0) to = after - y > 60 ? before : after;
-  else to = y - before < after - y ? before : after;
-  if (to != null && Math.abs(to - y) > 2) sc.scrollTo({ top: to, behavior: 'smooth' });
-}
+/* ====================== 섹션 안 스크롤 ====================== */
+// 섹션은 딱 한 화면이고, 긴 내용은 섹션 '안'(.scene-in)에서 부드럽게 스크롤 → 끝까지 가면 다음 쓱에 다음 섹션.
+// 섹션을 넘어오면 옆 섹션들의 안쪽 위치를 미리 맞춰 둬: 아래 섹션은 맨 위부터, 위 섹션은 맨 아래부터 보이게
+//   (그래야 위로 돌아갈 때 긴 섹션의 끝부터 이어서 보여서 한 장짜리 페이지처럼 자연스러워)
 (() => {
   const sc = $('scroller');
   if (!sc) return;
-  sc.addEventListener('touchstart', (e) => {
-    snap.y0 = e.touches[0].clientY; snap.decided = false; snap.touching = true; snap.out = 0;
-    snap.span = tallSpan(); setSnapFree(!!snap.span, snap.span);   // 손대기 전에 정해 두기
-  }, { passive: true });
-  sc.addEventListener('touchmove', (e) => {
-    if (snap.decided || snap.y0 == null) return;
-    const dy = e.touches[0].clientY - snap.y0;
-    if (Math.abs(dy) < 3) return;
-    snap.decided = true;
-    const dir = dy < 0 ? 1 : -1;   // 손가락 위로 = 아래 내용
-    if (snapOutward(snap.span, dir)) snap.out = dir;   // 긴 섹션 밖으로 나가는 손짓
-  }, { passive: true });
-  const untouch = () => { snap.touching = false; };
-  sc.addEventListener('touchend', untouch, { passive: true });
-  sc.addEventListener('touchcancel', untouch, { passive: true });
-  // PC 휠: 긴 섹션 안은 스냅 없이, 끝에서 바깥으로 굴리면 옆 섹션으로 한 칸
-  sc.addEventListener('wheel', (e) => {
-    if (!e.deltaY) return;
-    if (performance.now() - snap.clampAt < 450) { e.preventDefault(); return; }   // 멈춘 직후 남은 관성(트랙패드)은 무시
-    const t = tallSpan(), dir = Math.sign(e.deltaY);
-    if (!t) return;   // 짧은 섹션은 원래대로
-    if (snapOutward(t, dir)) {
-      e.preventDefault();
-      const to = snapNext(sc.scrollTop, dir);
-      if (to != null) { setSnapFree(false); snap.clampAt = performance.now(); sc.scrollTo({ top: to, behavior: 'smooth' }); }
-    } else setSnapFree(true, t);
-  }, { passive: false });
-  sc.addEventListener('scroll', () => {
-    const y = sc.scrollTop, vh = sc.clientHeight;
-    if (y !== snap.lastY) { snap.dir = Math.sign(y - snap.lastY); snap.lastY = y; }
-    if (snap.free && snap.cur && !snap.touching) {
-      if (snap.out) {   // 밖으로 나가는 관성: 옆 섹션 시작을 지나치면 거기서 멈춤
-        const edge = snap.out < 0 ? snap.cur.a : snap.cur.b;
-        const to = snapNext(edge, snap.out);
-        if (to != null && (snap.out < 0 ? y <= to : y >= to)) { snapStopAt(to); return; }
-      } else {          // 안에서 시작한 관성: 긴 섹션 끝에서 멈춤
-        const edge = y < snap.cur.a - 2 ? snap.cur.a : y + vh > snap.cur.b + 2 ? snap.cur.b - vh : null;
-        if (edge != null) { snapStopAt(edge); return; }
-      }
-    }
-    clearTimeout(snap.idleT);
-    snap.idleT = setTimeout(() => {
-      if (snap.touching) return;
-      snap.out = 0;
-      if (tallSpan()) snapRest();
-      else { setSnapFree(false); setTimeout(snapSettle, 60); }
-    }, 160);
-  }, { passive: true });
-  addEventListener('resize', snapRest);
-  snapRest();
+  let cur = -1, t = 0;
+  const visible = () => [...document.querySelectorAll('.scene')].filter((s) => !s.hidden);
+  const settle = () => {
+    const secs = visible(), y = sc.scrollTop + sc.clientHeight / 2;
+    const i = secs.findIndex((s) => y >= s.offsetTop && y < s.offsetTop + s.offsetHeight);
+    if (i < 0 || i === cur) return;
+    cur = i;
+    secs.forEach((s, k) => {
+      if (k === i) return;
+      const inn = s.querySelector(':scope > .scene-in');
+      if (inn) inn.scrollTop = k > i ? 0 : inn.scrollHeight;
+    });
+  };
+  sc.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(settle, 120); }, { passive: true });
+  setTimeout(settle, 0);
 })();
 
 /* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
