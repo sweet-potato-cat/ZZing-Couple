@@ -2380,7 +2380,7 @@ function petCounts() {
   };
 }
 const petPoints = (c) => PET_EARN.reduce((n, [k, , w]) => n + (Number(c && c[k]) || 0) * w, 0);
-const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(c) - petPoints(p.base) - (p.spent || 0));
+const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(c) - petPoints(p.base) + (p.gameFood || 0) - (p.spent || 0));   // gameFood = 🎮 게임으로 받은 간식
 const petFull = (p, now = Date.now()) => Math.max(0, Math.min(100, (p.full || 0) - ((now - (p.fedAt || p.at || now)) / 3600000) * PET_DECAY));
 function petLevel(exp) {
   let lv = 1, need = 30, left = exp || 0;
@@ -2443,6 +2443,11 @@ function renderPet() {
     const s = document.createElement('span'); s.textContent = ` (${n}번)`; li.appendChild(s);
     earn.appendChild(li);
   });
+  { // 🎮 게임: 게임마다 각자 하루 한 번
+    const li = document.createElement('li'); li.textContent = `🎮 게임 한 판 (게임마다 하루 한 번) → 🦴 +${GAME_FOOD}`;
+    const s = document.createElement('span'); s.textContent = ` (${Math.round((p.gameFood || 0) / GAME_FOOD)}번)`; li.appendChild(s);
+    earn.appendChild(li);
+  }
   // 최근 돌본 기록
   const log = $('petLog'); log.innerHTML = '';
   (p.log || []).slice(-3).reverse().forEach((x) => {
@@ -3003,6 +3008,7 @@ async function plantVine(slot) {
     farm.sel = placed.id; farm.fresh = placed.id;
     setTimeout(() => { if (farm.fresh === placed.id) farm.fresh = null; }, 900);
     emoToast(`🌱 ${WHO[me].name}의 ${placed.n}번째 송이를 심었어!`);
+    notifyPartner('plant', { n: placed.n }, `🌱 ${placed.n}번째 송이 심기`);   // 🔔 상대한테 (Worker 배포 전엔 이모티콘 문구로)
   }
   renderFarm();
 }
@@ -3109,11 +3115,12 @@ if ($('grapeFarm')) {
 }
 
 /* ====================== 🎮 놀이 (통나무 타기 · 공 받기) ====================== */
-// 게임은 간식이 아니라 ⭐ 경험치만 줘 (게임만 돌려서 간식을 무한으로 못 모으게).
-// 경험치는 게임마다 각자 하루 GAME_DAILY판까지만.
-// 기록: 키우기 문서 games.{log|ball} = { best: {bear, bunny}, day, plays: {bear, bunny} }
+// 게임 보상: ⭐ 경험치 (게임마다 각자 하루 GAME_DAILY판까지) + 🦴 간식 1개 (게임마다 각자 하루 한 번, 첫 판에)
+//   간식은 하루 최대 게임 수 × 2명이라 게임만 돌려서 무한으로 못 모아. 받은 총 개수는 pet.gameFood 에 쌓여서 petFood 에 더해져
+// 기록: 키우기 문서 games.{log|ball|…} = { best: {bear, bunny}, day, plays: {bear, bunny}, fed: {bear, bunny} }
 // 새 게임 추가: games/ 에 클래스(start/pause/resume/stop/reset/draw/resize) 만들고 GAMES 에 한 줄 + index.html 버튼
 const GAME_DAILY = 3;
+const GAME_FOOD = 1;   // 🦴 게임마다 각자 하루 한 번 주는 간식 수
 const GAMES = {
   log: {
     title: '🪵 통나무 타기', Cls: LogGame, ctrl: 'gameCtrlLog',
@@ -3189,13 +3196,14 @@ function dogImages(stage) {
 
 function gameRecord(key) {
   const G = GAMES[key], g = (pet.data && pet.data.games && pet.data.games[(G && G.rec) || key]) || {};
-  return { best: g.best || {}, plays: g.day === todayYmd() ? (g.plays || {}) : {} };
+  const today = g.day === todayYmd();
+  return { best: g.best || {}, plays: today ? (g.plays || {}) : {}, fed: today ? (g.fed || {}) : {} };
 }
 function renderGameRec() {
-  const G = GAMES[gm.key], { best, plays } = gameRecord(gm.key), me = getMe();
+  const G = GAMES[gm.key], { best, plays, fed } = gameRecord(gm.key), me = getMe();
   const parts = BDAY_WHO.map(([w, icon, name]) => `${icon} ${name} ${best[w] ? G.fmt(best[w]) : '-'}`);
   $('gameRec').textContent = `🏆 최고 기록  ${parts.join(' · ')}` +
-    (me ? `\n⭐ 오늘 경험치 받을 수 있는 판: ${Math.max(0, GAME_DAILY - (plays[me] || 0))}/${GAME_DAILY}` : '\n⚙️ 설정에서 "나는 누구?"를 고르면 기록이 남아');
+    (me ? `\n⭐ 오늘 경험치 받을 수 있는 판: ${Math.max(0, GAME_DAILY - (plays[me] || 0))}/${GAME_DAILY} · 🦴 오늘 간식 ${fed[me] ? '받았어 ✓' : `+${GAME_FOOD} 남았어`}` : '\n⚙️ 설정에서 "나는 누구?"를 고르면 기록이 남아');
 }
 function gameScreen(kind, data = {}) {   // kind: ready | over | pause
   const G = GAMES[gm.key], box = $('gameOver');
@@ -3213,6 +3221,7 @@ function gameScreen(kind, data = {}) {   // kind: ready | over | pause
     const name = pet.data ? pet.data.name : '';
     add('go-sub', data.exp ? `${name}${josa(name, '이', '가')} ⭐ 경험치 +${data.exp}${data.lvUp ? ` · 레벨 업! Lv.${data.lvUp} 🎉` : ''}`
       : data.capped ? `오늘 경험치는 다 받았어 (하루 ${GAME_DAILY}판). 기록 도전은 계속 OK!` : (data.note || ''));
+    if (data.food) add('go-sub', `🦴 간식 +${data.food}! (이 게임은 하루 한 번)`);
     if (data.extra) add('go-sub', data.extra);
     if (data.partner) add('go-sub', data.partner);
     btn.textContent = '한 번 더!'; btn.onclick = startGame;
@@ -3271,15 +3280,18 @@ async function finishGame(key, score) {
     const rk = G.rec || key, games = { ...(q.games || {}) }, L = games[rk] || {};
     const plays = L.day === today ? { ...(L.plays || {}) } : {};
     const best = { ...(L.best || {}) };
+    const fed = L.day === today ? { ...(L.fed || {}) } : {};   // 🦴 오늘 이 게임 간식 받았는지 (각자)
     const n = plays[me] || 0;
     res.best = G.lower ? score > 0 && (!best[me] || score < best[me]) : score > (best[me] || 0);   // lower: 시간이라 짧을수록 신기록
     if (res.best) best[me] = score;
     res.capped = n >= GAME_DAILY;
     res.exp = res.capped || score <= 0 ? 0 : G.exp(score);
     if (res.exp > 0) plays[me] = n + 1;   // 0점 판은 횟수에 안 셈
-    games[rk] = { best, day: today, plays };
+    res.food = !fed[me] && score > 0 ? GAME_FOOD : 0;   // 0점 판은 간식도 X
+    if (res.food) fed[me] = 1;
+    games[rk] = { best, day: today, plays, fed };
     expAfter = (q.exp || 0) + res.exp;
-    return { ...q, exp: expAfter, games };
+    return { ...q, exp: expAfter, games, gameFood: (q.gameFood || 0) + res.food };
   });
   const after = petLevel(expAfter).lv;
   if (after > before) res.lvUp = after;
@@ -3439,10 +3451,17 @@ async function togglePush() {
 }
 
 // 상대에게 알림 (실패해도 조용히 넘어감)
-async function notifyPartner(type, extra = {}) {
+// fallback: 알림 서버(worker.js)를 아직 새로 배포 안 해서 그 type 문구가 없으면 이모티콘 문구("…이 "fallback" 보냈어")로 대신 보내기
+async function notifyPartner(type, extra = {}, fallback = '') {
   const to = partnerOf(getMe());
   if (!PUSH_URL || !push.c || !to) return;
-  try { await pushPost('/notify', { to, type, ...extra }, true); } catch (e) { console.warn('notify', type, e.message); }
+  try { await pushPost('/notify', { to, type, ...extra }, true); }
+  catch (e) {
+    if (fallback && e.message === 'type/to') {
+      try { await pushPost('/notify', { to, type: 'emo', label: fallback }, true); return; } catch (e2) { console.warn('notify', type, e2.message); return; }
+    }
+    console.warn('notify', type, e.message);
+  }
 }
 
 if ($('pushBtn')) {
