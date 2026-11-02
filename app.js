@@ -1723,6 +1723,7 @@ document.addEventListener('keydown', (e) => {
 
 /* ====================== 섹션 안 스크롤 ====================== */
 // 섹션은 딱 한 화면이고, 긴 내용은 섹션 '안'(.scene-in)에서 부드럽게 스크롤 → 끝까지 가면 다음 쓱에 다음 섹션.
+// 섹션 넘기기(한 번 쓱)는 아래 touch 코드가 직접 해 (아이폰이 안쪽 끝에서 바깥으로 안 넘겨줘서)
 // 섹션을 넘어오면 옆 섹션들의 안쪽 위치를 미리 맞춰 둬: 아래 섹션은 맨 위부터, 위 섹션은 맨 아래부터 보이게
 //   (그래야 위로 돌아갈 때 긴 섹션의 끝부터 이어서 보여서 한 장짜리 페이지처럼 자연스러워)
 (() => {
@@ -1743,6 +1744,39 @@ document.addEventListener('keydown', (e) => {
   };
   sc.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(settle, 120); }, { passive: true });
   setTimeout(settle, 0);
+
+  // 👆 섹션 넘기기는 직접: 아이폰은 섹션 안 스크롤이 끝에 닿으면 바깥으로 안 넘겨주고 그 자리에서 고무줄처럼 튕기기만 해
+  //    (폰에선 거의 모든 섹션이 화면보다 살짝 길어서 → 다음 메뉴로 아예 안 넘어갔어)
+  //    → 안쪽이 맨 위인데 아래로 / 맨 아래인데 위로 쓸면: 튕김을 막고, 손 떼면 옆 섹션으로 한 칸
+  const g = { y0: 0, x0: 0, inn: null, atTop: false, atBottom: false, out: 0, decided: false };
+  sc.addEventListener('touchstart', (e) => {
+    const inn = e.target.closest && e.target.closest('.scene-in');
+    g.inn = inn; g.decided = false; g.out = 0;
+    if (!inn || e.touches.length > 1) return;
+    g.y0 = e.touches[0].clientY; g.x0 = e.touches[0].clientX;
+    g.atTop = inn.scrollTop <= 1;
+    g.atBottom = inn.scrollTop + inn.clientHeight >= inn.scrollHeight - 1;
+  }, { passive: true });
+  sc.addEventListener('touchmove', (e) => {
+    if (!g.inn) return;
+    const dy = e.touches[0].clientY - g.y0, dx = e.touches[0].clientX - g.x0;
+    if (!g.decided) {
+      if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
+      g.decided = true;
+      if (Math.abs(dx) > Math.abs(dy)) return;   // 옆으로 쓸기(갤러리·문패)는 상관 안 함
+      if (dy < 0 && g.atBottom) g.out = 1;        // 손가락 위로 + 안쪽 맨 아래 → 다음 섹션
+      else if (dy > 0 && g.atTop) g.out = -1;     // 손가락 아래로 + 안쪽 맨 위 → 이전 섹션
+    }
+    if (g.out && e.cancelable) e.preventDefault();   // 안쪽 튕김 / 바깥 스크롤 막고 우리가 넘김
+  }, { passive: false });
+  sc.addEventListener('touchend', (e) => {
+    if (!g.inn || !g.out) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : g.y0) - g.y0;
+    const out = g.out; g.out = 0;
+    if (Math.abs(dy) < 24 || Math.sign(-dy) !== out) return;   // 너무 짧거나 방향이 바뀌었으면 그대로
+    const secs = visible(), i = secs.indexOf(g.inn.parentElement), to = secs[i + out];
+    if (to) sc.scrollTo({ top: to.offsetTop, behavior: 'smooth' });
+  }, { passive: true });
 })();
 
 /* ====================== 섹션 바로 가기 (오른쪽 점 슬라이더) ====================== */
