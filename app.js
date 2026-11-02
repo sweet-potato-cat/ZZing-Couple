@@ -1851,8 +1851,14 @@ const normNow = (v) => {
     const x = o[w];
     if (x && NOW_BY[x.s] && Number.isFinite(x.at)) out[w] = { s: x.s, at: x.at };
   }
+  // ask.{bear|bunny} = 그 사람이 상대한테 "지금 뭐해?" 물어본 시각
+  out.ask = {};
+  for (const w of ['bear', 'bunny']) if (o.ask && Number.isFinite(o.ask[w])) out.ask[w] = o.ask[w];
   return out;
 };
+const NOW_ASK_GAP = 60000;   // "지금 뭐해?" 물어보기는 1분에 한 번 (알림 폭탄 방지)
+// 물어본 뒤로 상대가 아직 문패를 안 바꿨으면 그 시각, 아니면 0
+const nowAskedAt = (from, to) => { const a = (nowSt.data.ask || {})[from] || 0, c = nowSt.data[to]; return a && (!c || c.at < a) && Date.now() - a < NOW_STALE ? a : 0; };
 const nowSince = (at) => { const a = ago(at); return a === '방금' ? '방금 걸었어' : `${a}부터`; };
 function nowMsg(t) {
   const el = $('nowMsg'); el.textContent = t;
@@ -1869,9 +1875,24 @@ function buildNow() {
     const c = document.createElement('div'); c.className = `now-them ${w}`; c.id = 'nowThem-' + w;
     c.setAttribute('aria-live', 'polite');
     const who = document.createElement('div'); who.className = 'nt-who';
-    const plate = document.createElement('div'); plate.className = 'nt-plate';
+    // 상태판을 누르면 → "xx찡이 뭐하는지 궁금해?" 응 / 아니 → 응이면 상대한테 🔔 "지금 뭐하는지 물어봤어!"
+    const plate = document.createElement('button'); plate.type = 'button'; plate.className = 'nt-plate';
+    const ask = document.createElement('div'); ask.className = 'nt-ask'; ask.hidden = true;
+    const q = document.createElement('span'); q.textContent = `${WHO[w].name}이 뭐하는지 궁금해?`;
+    const yes = document.createElement('button'); yes.type = 'button'; yes.className = 'yes'; yes.textContent = '응';
+    const no = document.createElement('button'); no.type = 'button'; no.textContent = '아니';
+    ask.append(q, yes, no);
+    plate.addEventListener('click', () => {
+      const me = getMe();
+      if (!me) { nowMsg('먼저 위에서 🐻/🐰 "나는 누구?"를 골라 줘'); return; }
+      if (w !== partnerOf(me)) return;
+      ask.hidden = !ask.hidden;
+      if (!ask.hidden) yes.focus({ preventScroll: true });
+    });
+    yes.addEventListener('click', () => { ask.hidden = true; nowAsk(w); });
+    no.addEventListener('click', () => { ask.hidden = true; plate.focus({ preventScroll: true }); });
     const tm = document.createElement('div'); tm.className = 'nd-time';
-    c.append(who, plate, tm);
+    c.append(who, plate, ask, tm);
     box.appendChild(c);
   }
   const door = document.createElement('div'); door.className = 'now-door'; door.id = 'nowMine';
@@ -1898,7 +1919,8 @@ function buildNow() {
   }
   list.addEventListener('scroll', () => requestAnimationFrame(nowSyncDots), { passive: true });
   const tm = document.createElement('div'); tm.className = 'nd-time';
-  door.append(head, list, dots, tm);
+  const asked = document.createElement('div'); asked.className = 'nd-asked'; asked.hidden = true;
+  door.append(head, asked, list, dots, tm);
   box.appendChild(door);
 }
 // 지금 보는 장(길쭉) + 내 상태가 있는 장(빨강)
@@ -1945,7 +1967,10 @@ function renderNow() {
     plate.classList.toggle('none', !x);
     plate.style.setProperty('--c', x ? x.c : '');
     plate.textContent = x ? `${x.e} ${x.t}` : (nowSt.loaded ? '아직 안 걸었어' : '…');
-    c.querySelector('.nd-time').textContent = x ? nowTime(cur, stale, false) : '';
+    plate.setAttribute('aria-label', `${WHO[w].name} 지금 ${x ? x.t : '상태 없음'}${me && w === partner ? ' · 누르면 지금 뭐하는지 물어보기' : ''}`);
+    const askedAt = me && w === partner ? nowAskedAt(me, w) : 0;
+    const t = x ? nowTime(cur, stale, false) : '';
+    c.querySelector('.nd-time').textContent = askedAt ? `${t ? t + ' · ' : ''}❓ ${ago(askedAt)} 물어봤어` : t || (me && w === partner ? '눌러서 물어보기' : '');
   }
   // 내 문패
   const door = $('nowMine');
@@ -1963,6 +1988,9 @@ function renderNow() {
     b.setAttribute('aria-pressed', String(on));
   });
   door.querySelector('.nd-time').textContent = nowTime(cur, stale, true);
+  const askedMe = nowAskedAt(partner, me), asked = door.querySelector('.nd-asked');
+  asked.hidden = !askedMe;
+  if (askedMe) asked.textContent = `${WHO[partner].icon} ${WHO[partner].name}이 내가 뭐하는지 궁금해해! 👇 눌러서 알려 줘`;
   nowShowPage(cur && cur.s);
   nowSyncDots();
 }
@@ -1989,22 +2017,42 @@ async function setNow(w, s) {
 }
 
 // 상대에게 알림 (마지막으로 고른 것 하나만)
+// 문패 알림 보내기 → 서버 답 { sent } (실패하면 null)
+// 알림 서버(worker.js)를 아직 새로 배포 안 해서 그 type 문구가 없으면 이모티콘 문구("…이 "fallback" 보냈어")로 대신
+async function nowPush(to, type, label, fallback = label) {
+  if (!to || !PUSH_URL || !push.c) return null;
+  try { return await pushPost('/notify', { to, type, label }, true); }
+  catch (e) {
+    if (e.message !== 'type/to') { console.warn('notify', type, e.message); return null; }
+    try { return await pushPost('/notify', { to, type: 'emo', label: fallback }, true); } catch (e2) { console.warn('notify', type, e2.message); return null; }
+  }
+}
 async function flushNowNotify() {
   clearTimeout(nowSt.notifyT);
   const s = nowSt.pending; nowSt.pending = null;
   const to = partnerOf(getMe());
   if (!s || !to || !PUSH_URL || !push.c) return;
-  const x = NOW_BY[s], label = `${x.e} ${x.t}`;
-  let r = null;
-  try { r = await pushPost('/notify', { to, type: 'now', label }, true); }
-  catch (e) {
-    // 알림 서버(worker.js)를 아직 새로 배포 안 했으면 'now' 문구가 없어 → 이모티콘 문구로라도 보내기
-    if (e.message !== 'type/to') { console.warn('notify now', e.message); return; }
-    try { r = await pushPost('/notify', { to, type: 'emo', label }, true); } catch (e2) { console.warn('notify now', e2.message); return; }
-  }
-  if (document.hidden || nowSt.pending) return;
+  const x = NOW_BY[s];
+  const r = await nowPush(to, 'now', `${x.e} ${x.t}`);
+  if (!r || document.hidden || nowSt.pending) return;
   nowMsg(r && r.sent > 0 ? `${WHO[to].icon} ${WHO[to].name}한테 알림 보냈어 🔔`
     : `${x.e} ${x.t} 걸어 뒀어 ✓ (${WHO[to].name}은 아직 알림을 안 켰어)`);
+}
+
+// ❓ 상대한테 "지금 뭐해?" 물어보기: 공유 문서에 기록(상대가 들어오면 내 문패 위에 안내) + 🔔 알림
+async function nowAsk(to) {
+  const me = getMe();
+  if (!me || to !== partnerOf(me) || !nowSt.store) return;
+  const last = (nowSt.data.ask || {})[me] || 0;
+  if (Date.now() - last < NOW_ASK_GAP) { nowMsg('방금 물어봤어! 조금만 기다려 줘 ⏳'); return; }
+  const prev = nowSt.data, at = Date.now();
+  nowSt.data = { ...prev, ask: { ...(prev.ask || {}), [me]: at } };
+  renderNow();
+  try { await nowSt.store.mutate((d) => { const n = normNow(d); return { ...n, ask: { ...n.ask, [me]: at } }; }); }
+  catch (e) { console.error(e); nowSt.data = prev; renderNow(); nowMsg('⚠️ 못 물어봤어. 잠시 후 다시 해 줘.'); return; }
+  nowMsg(`${WHO[to].icon} ${WHO[to].name}한테 지금 뭐하는지 물어봤어 ❓`);
+  const r = await nowPush(to, 'ask', '', '지금 뭐해? 🚪');
+  if (r && !r.sent && !document.hidden) nowMsg(`물어봤어 ❓ (${WHO[to].name}은 아직 알림을 안 켜서, 들어오면 보여)`);
 }
 
 async function initNow() {
@@ -2014,9 +2062,12 @@ async function initNow() {
   nowSt.store.subscribe((v) => {
     const next = normNow(v), p = partnerOf(getMe());
     const moved = !first && p && next[p] && (!nowSt.data[p] || nowSt.data[p].at !== next[p].at);
+    const asked = !first && p && next.ask[p] && next.ask[p] !== (nowSt.data.ask || {})[p];   // 상대가 방금 "지금 뭐해?"
     nowSt.data = next; nowSt.loaded = true; first = false;
     renderNow();
-    if (moved) { const d = $('nowThem-' + p); d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
+    const shake = (id) => { const d = $(id); if (d) { d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); } };
+    if (moved) shake('nowThem-' + p);
+    if (asked) { shake('nowMine'); try { navigator.vibrate && navigator.vibrate([60, 40, 60]); } catch {} }
   });
   clearInterval(nowSt.timer);
   nowSt.timer = setInterval(() => { if (!document.hidden) renderNow(); }, 60000);   // "N분 전부터" 갱신

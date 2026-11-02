@@ -888,6 +888,14 @@
   .nt-who{font-family:var(--hand);font-weight:700;font-size:1.2rem}
   .nt-plate{display:inline-flex;align-items:center;gap:8px;min-width:min(100%,220px);justify-content:center;padding:6px 18px 8px;background:var(--c,var(--paper));border:var(--line);border-radius:12px;font-family:var(--hand);font-weight:700;font-size:1.7rem;box-shadow:0 3px 0 var(--ink);position:relative}
   .nt-plate::before{content:'';position:absolute;left:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;border:2px solid var(--ink);background:var(--heart);box-shadow:0 2px 0 var(--ink)}
+  button.nt-plate{-webkit-appearance:none;appearance:none;color:var(--ink);cursor:pointer;transition:transform .08s,box-shadow .08s}
+  button.nt-plate:active{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+  .nt-ask{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;font-family:var(--hand);font-weight:700;font-size:1.15rem;animation:popin .18s ease-out}
+  .nt-ask button{-webkit-appearance:none;appearance:none;border:2px solid var(--ink);border-radius:999px;background:var(--paper);color:var(--ink);padding:2px 16px 4px;font-family:var(--hand);font-weight:700;font-size:1.15rem;box-shadow:0 2px 0 var(--ink);cursor:pointer}
+  .nt-ask span{flex-basis:100%;text-align:center}   /* 질문 한 줄, 그 아래 응 · 아니 나란히 */
+  .nt-ask button.yes{background:#DDF0D9}
+  .nt-ask button:active{transform:translateY(2px);box-shadow:none}
+  .nd-asked{font-family:var(--hand);font-weight:700;font-size:1.05rem;text-align:center;background:#FFF1C2;border:2px dashed var(--ink);border-radius:10px;padding:3px 8px 4px;animation:popin .18s ease-out}
   .nt-plate.none{background:var(--paper);color:#888;font-size:1.25rem;font-weight:400;box-shadow:none;border-style:dashed}
   .nt-plate.none::before{display:none}
   .now-them.stale .nt-plate{filter:saturate(.35);opacity:.7}
@@ -913,10 +921,10 @@
   .nd-dots button[aria-current="true"]{width:24px}
   .nd-dots button.has{background:var(--heart)}
   .nd-time{font-size:.85rem;color:#555;text-align:center;min-height:1.2em}
-  .now-them.flash{animation:ndflash .9s ease}
+  .now-them.flash,.now-door.flash{animation:ndflash .9s ease}
   @keyframes ndflash{20%{transform:rotate(-2deg) scale(1.03)}50%{transform:rotate(2deg)}80%{transform:rotate(-1deg)}}
   .now-msg{min-height:1.4em;margin:12px 0 0;font-family:var(--hand);font-size:1.15rem;text-align:center}
-  @media (prefers-reduced-motion: reduce){ .now-them.flash{animation:none} .nd-dots button{transition:none} }
+  @media (prefers-reduced-motion: reduce){ .now-them.flash,.now-door.flash{animation:none} .nd-dots button{transition:none} }
 </style>
 </head>
 <body>
