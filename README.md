@@ -23,6 +23,8 @@ pip install pillow cryptography        # 아이폰 HEIC면 pillow-heif 도
 python3 encrypt_photos.py              # 처음 실행 때 비밀번호(8자 이상) 설정
 ```
 사진 추가/삭제: `photos_raw/`에서 넣고 빼고 → 다시 실행 → `gallery/` push.
+- GitHub 사진을 **전부** 빼고 싶으면: `gallery/`의 `*.enc`(사진 + `manifest.enc`)만 지우고 push. ⚠️ `gallery/meta.json`은 비밀번호 확인용이라 **절대 지우면 안 돼** (지우면 아무도 못 들어와)
+  - 원본은 `photos_raw/빼둔_사진/`처럼 하위 폴더에 두면 스크립트가 무시해 (다시 실행해도 안 올라감)
 
 ## 2. Firebase (버킷리스트 공유)
 1. console.firebase.google.com → 프로젝트 만들기 (Analytics 꺼도 됨)
