@@ -81,6 +81,7 @@ function clearSaved() {
 function unlocked(key, docId) {
   state.key = key; state.docId = docId;
   $('lock').classList.add('gone');
+  setTimeout(introApply, 350);   // 잠금 화면이 사라지는 동안 → 첫 화면 뿅뿅뿅
   initGallery();
   initBucket();
   initCalendar();
@@ -371,13 +372,18 @@ document.addEventListener('mechange', () => {
   try { renderPush().catch(() => {}); } catch {}
 });
 
-/* ====================== 하트 (섹션 3) ====================== */
-(() => {
+/* ====================== 첫 화면: 곰돌찡 → 토끼찡 → ♥ ====================== */
+// 화면에 보이고 + 잠금이 풀렸을 때 #together 에 .seen → CSS가 순서대로 뿅뿅뿅 (다시 돌아오면 또)
+// 잠금 화면 뒤에서 미리 끝나 버리지 않게, 잠금이 풀리면 unlocked() 가 introApply() 를 한 번 더 불러
+const intro = { visible: true };
+function introApply() {
   const t = $('together');
-  if (!('IntersectionObserver' in window)) { t.classList.add('seen'); return; }
-  new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle('seen', e.isIntersecting)),
-    { root: $('scroller'), threshold: 0.6 }).observe(t);
-})();
+  if (t) t.classList.toggle('seen', intro.visible && $('lock').classList.contains('gone'));
+}
+if ('IntersectionObserver' in window && $('together')) {
+  new IntersectionObserver((es) => es.forEach((e) => { intro.visible = e.isIntersecting; introApply(); }),
+    { root: $('scroller'), threshold: 0.6 }).observe($('together'));
+}
 
 /* ====================== 갤러리 ====================== */
 // 두 종류의 사진이 날짜순으로 섞여 보여:

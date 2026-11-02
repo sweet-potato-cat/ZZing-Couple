@@ -145,16 +145,25 @@
   .bear .blush{background:var(--bear-blush)}
   .bunny .blush{background:var(--bunny-blush)}
 
-  .duo{display:flex;align-items:center;gap:clamp(8px,2vw,22px);flex-wrap:wrap;justify-content:center}
-  .duo .bubble{font-size:clamp(1.9rem,6.5vw,4rem)}
-  .heart{
-    width:clamp(54px,9vw,88px);height:auto;flex:none;
-    transform:scale(0);transition:transform .55s cubic-bezier(.3,1.7,.5,1);
-  }
-  .scene.seen .heart{transform:scale(1)}
+  /* 첫 화면 한 페이지: 곰돌찡(0.15s) → 토끼찡(0.75s) → ♥(1.35s) 순서로 뿅, 하트는 그다음 두근두근 */
+  .duo{display:flex;align-items:center;gap:clamp(10px,2.4vw,26px);flex-wrap:wrap;justify-content:center}
+  .duo .bubble{font-size:clamp(2.2rem,7vw,4.4rem);opacity:0;transform:scale(.4) translateY(24px)}
+  .heart{width:clamp(58px,10vw,96px);height:auto;flex:none;opacity:0;transform:scale(0)}
+  #together.seen .bubble.bear{animation:duopop .55s .15s cubic-bezier(.3,1.6,.5,1) forwards}
+  #together.seen .bubble.bunny{animation:duopop .55s .75s cubic-bezier(.3,1.6,.5,1) forwards}
+  #together.seen .heart{animation:heartpop .6s 1.35s cubic-bezier(.3,1.8,.5,1) forwards,heartbeat 1.3s 2.1s ease-in-out infinite}
+  @keyframes duopop{to{opacity:1;transform:none}}
+  @keyframes heartpop{to{opacity:1;transform:scale(1)}}
+  @keyframes heartbeat{0%,100%{opacity:1;transform:scale(1)}15%{opacity:1;transform:scale(1.16)}30%{opacity:1;transform:scale(1)}45%{opacity:1;transform:scale(1.1)}}
+  #together .hint{opacity:0}
+  #together.seen .hint{animation:hintin .4s 2s forwards,bob 1.8s 2.4s ease-in-out infinite}
+  @keyframes hintin{to{opacity:1}}
   @media (max-width:600px){
     .duo{flex-direction:column;gap:22px}
-    .duo .bubble{font-size:2.6rem}
+    .duo .bubble{font-size:2.9rem}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .duo .bubble,.heart,#together .hint{opacity:1!important;transform:none!important;animation:none!important}
   }
 
   .hint{
@@ -961,24 +970,17 @@
 <div class="dday" id="dday" hidden></div>
 
 <main class="scroller" id="scroller">
-  <section data-nav="곰돌찡" data-sec="intro" class="scene" aria-label="곰돌찡">
-    <div class="bubble bear">곰돌찡<span class="blush"></span></div>
-    <div class="hint">내려 봐 ↓</div>
-  </section>
-
-  <section data-nav="토끼찡" data-sec="intro" class="scene" aria-label="토끼찡">
-    <div class="bubble bunny">토끼찡<span class="blush"></span></div>
-  </section>
-
-  <section data-nav="우리 ♥" data-sec="intro" class="scene" id="together" aria-label="곰돌찡과 토끼찡">
+  <!-- 첫 화면: 한 페이지에서 곰돌찡 → 토끼찡 → ♥ 순서로 톡톡톡 (#together.seen 이 붙을 때마다 다시) -->
+  <section data-nav="곰돌찡 ♥ 토끼찡" data-sec="intro" class="scene" id="together" aria-label="곰돌찡과 토끼찡">
     <div class="duo">
-      <div class="bubble bear">곰돌찡</div>
+      <div class="bubble bear">곰돌찡<span class="blush"></span></div>
       <svg class="heart" viewBox="0 0 64 58" aria-label="하트" role="img">
         <path d="M32 54 C10 38 3 28 3 18 C3 9 10 3 18 3 C24 3 29 7 32 12 C35 7 40 3 46 3 C54 3 61 9 61 18 C61 28 54 38 32 54Z"
               fill="#FF8E8F" stroke="#1f1f1f" stroke-width="3.5" stroke-linejoin="round"/>
       </svg>
-      <div class="bubble bunny">토끼찡</div>
+      <div class="bubble bunny">토끼찡<span class="blush"></span></div>
     </div>
+    <div class="hint">내려 봐 ↓</div>
   </section>
 
   <section data-nav="지금 뭐해" data-sec="now" class="scene" aria-label="지금 뭐해?">
@@ -1342,6 +1344,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=pet3"></script>
+<script type="module" src="app.js?v=intro1"></script>
 </body>
 </html>
