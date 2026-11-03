@@ -1895,19 +1895,20 @@ function hideDotLabelSoon() {
 // 저장: couples/{sha256(docId + ':now')} = 암호화된 { bear: { s, at }, bunny: { s, at } }
 // 상태 추가·순서·색은 NOW_LIST 만 고치면 돼 (⚠️ k는 바꾸지 말기 — 저장된 값이 k라서)
 const NOW_LIST = [
-  // 1장: 바쁜 일
+  // 1장: 일·학교
   { k: 'work', e: '💼', t: '근로중!', c: '#FBEEDD' },
   { k: 'class', e: '🏫', t: '수업중!', c: '#FCE4EC' },
+  { k: 'tutor', e: '✏️', t: '과외중!', c: '#E8F5E9' },
   { k: 'study', e: '📚', t: '공부중!', c: '#F1E3FB' },
   { k: 'task', e: '💻', t: '작업중!', c: '#FFE3D1' },
-  { k: 'meet', e: '🗣️', t: '미팅중!', c: '#EAF3FC' },
   // 2장: 생활
+  { k: 'meet', e: '🗣️', t: '미팅중!', c: '#EAF3FC' },
   { k: 'busy', e: '🔥', t: '지금바쁨!', c: '#FFD2D2' },
   { k: 'move', e: '🚌', t: '이동중!', c: '#E8E0FA' },
   { k: 'eat', e: '🍚', t: '식사중!', c: '#FFF1C2' },
   { k: 'wash', e: '🛁', t: '씻는중!', c: '#DDF3F6' },
+  // 3장: 쉬는 중
   { k: 'sleep', e: '😴', t: '자는중!', c: '#D9DCF2' },
-  // 3장: 한가함
   { k: 'free', e: '😊', t: '안바쁨!', c: '#DDF0D9' },
   { k: 'phone', e: '📱', t: '폰보는중!', c: '#E0F2F1' },
   { k: 'chill', e: '🛋️', t: '빈둥대는중!', c: '#F3EEDC' },
