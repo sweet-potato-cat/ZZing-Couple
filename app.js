@@ -2504,7 +2504,12 @@ function petCounts() {
   };
 }
 const petPoints = (c) => PET_EARN.reduce((n, [k, , w]) => n + (Number(c && c[k]) || 0) * w, 0);
-const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(c) - petPoints(p.base) + (p.gameFood || 0) - (p.spent || 0));   // gameFood = 🎮 게임으로 받은 간식
+// 지금까지 본 가장 큰 개수 (pet.hi): 사진을 지우거나 버킷 체크를 풀어서 개수가 줄어도 이미 받은 간식은 안 줄어들게
+//   (예전엔 '지금 개수 − 데려온 날 개수'라서, GitHub 사진 2장을 지웠더니 간식이 마이너스가 돼서 게임 간식을 받아도 0개로 보였어)
+//   최댓값이라 체크했다 풀었다 반복해도 늘어나진 않아
+const petEff = (p, c) => Object.fromEntries(PET_EARN.map(([k]) => [k, Math.max(Number(c && c[k]) || 0, Number(p.hi && p.hi[k]) || 0)]));
+const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(petEff(p, c)) - petPoints(p.base) + (p.gameFood || 0) - (p.spent || 0));   // gameFood = 🎮 게임으로 받은 간식
+const PET_FIX_STATIC_BEFORE = Date.parse('2026-11-03T00:00:00+09:00');   // 이 날 전에 데려온 펫: 데려온 날 개수에 GitHub 사진 2장이 들어 있었어
 const petFull = (p, now = Date.now()) => Math.max(0, Math.min(100, (p.full || 0) - ((now - (p.fedAt || p.at || now)) / 3600000) * PET_DECAY));
 function petLevel(exp) {
   let lv = 1, need = 30, left = exp || 0;
@@ -2562,7 +2567,7 @@ function renderPet() {
   const earn = $('petEarn'); earn.innerHTML = '';
   PET_EARN.forEach(([k, label, w]) => {
     const li = document.createElement('li');
-    const n = Math.max(0, (c[k] || 0) - ((p.base && p.base[k]) || 0));
+    const n = Math.max(0, (petEff(p, c)[k] || 0) - ((p.base && p.base[k]) || 0));
     li.textContent = `${label} → 🦴 +${w}`;
     const s = document.createElement('span'); s.textContent = ` (${n}번)`; li.appendChild(s);
     earn.appendChild(li);
@@ -2582,11 +2587,32 @@ function renderPet() {
   });
 
   // 새로 간식이 생기면 알려 주기
-  const pts = petPoints(c);
+  const pts = petPoints(petEff(p, c));
   if (petAllReady()) {
+    petSaveHi(p, c);
     if (pet.lastPts !== null && pts > pet.lastPts) emoToast(`🦴 간식 +${pts - pet.lastPts}! ${p.name}한테 주러 가자`);
     pet.lastPts = pts;
   }
+}
+
+// 개수가 최댓값을 넘으면 pet.hi 에 저장 (+ 한 번만: 지운 GitHub 사진 2장만큼 데려온 날 개수 고치기)
+function petSaveHi(p, c) {
+  const hi = p.hi || {};
+  const fix = !p.fixStatic && (p.at || 0) < PET_FIX_STATIC_BEFORE && !gal.static.length;
+  if (pet.hiBusy || (!fix && PET_EARN.every(([k]) => (Number(c[k]) || 0) <= (Number(hi[k]) || 0)))) return;
+  pet.hiBusy = true;
+  petMutate((cur) => {
+    const q = normPet(cur);
+    if (!q) return cur;
+    const h = { ...(q.hi || {}) };
+    PET_EARN.forEach(([k]) => { h[k] = Math.max(Number(h[k]) || 0, Number(c[k]) || 0); });
+    const out = { ...q, hi: h };
+    if (!q.fixStatic && (q.at || 0) < PET_FIX_STATIC_BEFORE && !gal.static.length) {
+      out.base = { ...(q.base || {}), photo: Math.max(0, (Number(q.base && q.base.photo) || 0) - 2) };
+      out.fixStatic = true;
+    }
+    return out;
+  }).finally(() => { pet.hiBusy = false; });
 }
 
 function renderPetAdopt() {
