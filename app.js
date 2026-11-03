@@ -2509,7 +2509,9 @@ const petPoints = (c) => PET_EARN.reduce((n, [k, , w]) => n + (Number(c && c[k])
 //   (예전엔 '지금 개수 − 데려온 날 개수'라서, GitHub 사진 2장을 지웠더니 간식이 마이너스가 돼서 게임 간식을 받아도 0개로 보였어)
 //   최댓값이라 체크했다 풀었다 반복해도 늘어나진 않아
 const petEff = (p, c) => Object.fromEntries(PET_EARN.map(([k]) => [k, Math.max(Number(c && c[k]) || 0, Number(p.hi && p.hi[k]) || 0)]));
-const petFood = (p, c = petCounts()) => Math.max(0, PET_WELCOME + petPoints(petEff(p, c)) - petPoints(p.base) + (p.gameFood || 0) - (p.spent || 0));   // gameFood = 🎮 게임으로 받은 간식
+// adj = 예전에 개수가 줄어서 생긴 '마이너스 간식(빚)'을 없애 준 만큼 (petSaveHi 가 한 번 맞춰 줌)
+const petFoodRaw = (p, c = petCounts()) => PET_WELCOME + petPoints(petEff(p, c)) - petPoints(p.base) + (p.gameFood || 0) + (p.adj || 0) - (p.spent || 0);
+const petFood = (p, c = petCounts()) => Math.max(0, petFoodRaw(p, c));   // gameFood = 🎮 게임으로 받은 간식
 const PET_FIX_STATIC_BEFORE = Date.parse('2026-11-03T00:00:00+09:00');   // 이 날 전에 데려온 펫: 데려온 날 개수에 GitHub 사진 2장이 들어 있었어
 const petFull = (p, now = Date.now()) => Math.max(0, Math.min(100, (p.full || 0) - ((now - (p.fedAt || p.at || now)) / 3600000) * PET_DECAY));
 function petLevel(exp) {
@@ -2600,7 +2602,8 @@ function renderPet() {
 function petSaveHi(p, c) {
   const hi = p.hi || {};
   const fix = !p.fixStatic && (p.at || 0) < PET_FIX_STATIC_BEFORE && !gal.static.length;
-  if (pet.hiBusy || (!fix && PET_EARN.every(([k]) => (Number(c[k]) || 0) <= (Number(hi[k]) || 0)))) return;
+  const debt = petFoodRaw(p, c) < 0;   // 마이너스면 게임·사진으로 간식을 받아도 계속 0개로 보여 → 0으로 맞춰 줌
+  if (pet.hiBusy || (!fix && !debt && PET_EARN.every(([k]) => (Number(c[k]) || 0) <= (Number(hi[k]) || 0)))) return;
   pet.hiBusy = true;
   petMutate((cur) => {
     const q = normPet(cur);
@@ -2612,6 +2615,8 @@ function petSaveHi(p, c) {
       out.base = { ...(q.base || {}), photo: Math.max(0, (Number(q.base && q.base.photo) || 0) - 2) };
       out.fixStatic = true;
     }
+    const raw = petFoodRaw(out, c);
+    if (raw < 0) out.adj = (Number(out.adj) || 0) - raw;   // 빚만큼 채워서 0부터 다시 시작
     return out;
   }).finally(() => { pet.hiBusy = false; });
 }
@@ -3372,7 +3377,7 @@ function gameScreen(kind, data = {}) {   // kind: ready | over | pause
     const name = pet.data ? pet.data.name : '';
     add('go-sub', data.exp ? `${name}${josa(name, '이', '가')} ⭐ 경험치 +${data.exp}${data.lvUp ? ` · 레벨 업! Lv.${data.lvUp} 🎉` : ''}`
       : data.capped ? `오늘 경험치는 다 받았어 (하루 ${GAME_DAILY}판). 기록 도전은 계속 OK!` : (data.note || ''));
-    if (data.food) add('go-sub', `🦴 간식 +${data.food}! (이 게임은 하루 한 번)`);
+    if (data.food) add('go-sub', `🦴 간식 +${data.food}!${data.foodNow != null ? ` 지금 ${data.foodNow}개` : ''} (이 게임은 하루 한 번)`);
     if (data.extra) add('go-sub', data.extra);
     if (data.partner) add('go-sub', data.partner);
     btn.textContent = '한 번 더!'; btn.onclick = startGame;
@@ -3424,8 +3429,8 @@ async function finishGame(key, score) {
   if (!me) { res.note = '⚙️ 설정에서 "나는 누구?"를 고르면 경험치랑 기록이 남아'; return res; }
   if (!pet.data) return res;
   const before = petLevel(pet.data.exp).lv;
-  let expAfter = pet.data.exp || 0;
-  await petMutate((cur) => {
+  let expAfter = pet.data.exp || 0, outPet = null;
+  const saved = await petMutate((cur) => {
     const q = normPet(cur);
     if (!q) return cur;
     const rk = G.rec || key, games = { ...(q.games || {}) }, L = games[rk] || {};
@@ -3442,8 +3447,11 @@ async function finishGame(key, score) {
     if (res.food) fed[me] = 1;
     games[rk] = { best, day: today, plays, fed };
     expAfter = (q.exp || 0) + res.exp;
-    return { ...q, exp: expAfter, games, gameFood: (q.gameFood || 0) + res.food };
+    outPet = { ...q, exp: expAfter, games, gameFood: (q.gameFood || 0) + res.food };
+    return outPet;
   });
+  if (!saved) { res.exp = 0; res.food = 0; res.best = false; res.note = '⚠️ 저장을 못 했어. 인터넷 연결을 확인하고 다시 해 줘.'; return res; }
+  if (res.food && outPet) res.foodNow = petFood(outPet);
   const after = petLevel(expAfter).lv;
   if (after > before) res.lvUp = after;
   const them = partnerOf(me), tb = gameRecord(key).best[them];
